@@ -46,9 +46,12 @@ class LaravelAiExecutor implements Executor
             $durationMs = (int) ((hrtime(true) - $startTime) / 1_000_000);
             $tokensUsed = $response->usage->promptTokens + $response->usage->completionTokens;
 
+            $steps = $response->steps->map(fn ($step) => $step->toArray())->toArray();
+
             return new ExecutionResult(
                 status: 'success',
                 output: $response->text,
+                steps: $steps ?: null,
                 tokensUsed: $tokensUsed,
                 durationMs: $durationMs,
             );

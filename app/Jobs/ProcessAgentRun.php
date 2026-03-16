@@ -67,6 +67,7 @@ class ProcessAgentRun implements ShouldQueue
             $this->agentRun->update([
                 'status' => $result->status,
                 'output' => $result->output,
+                'steps' => $result->steps,
                 'tokens_used' => $result->tokensUsed,
                 'cost' => $result->cost,
                 'duration_ms' => $result->durationMs,

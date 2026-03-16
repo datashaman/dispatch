@@ -49,6 +49,14 @@ new #[Title('Webhook Logs')] class extends Component {
         $this->filterEventType = '';
         $this->filterStatus = '';
     }
+
+    public bool $confirmingClear = false;
+
+    public function clearLogs(): void
+    {
+        WebhookLog::query()->delete();
+        $this->confirmingClear = false;
+    }
 }; ?>
 
 <section class="w-full">
@@ -57,6 +65,17 @@ new #[Title('Webhook Logs')] class extends Component {
             <flux:heading size="xl">{{ __('Webhook Logs') }}</flux:heading>
             <flux:text class="mt-1">{{ __('View incoming webhook events and their processing status.') }}</flux:text>
         </div>
+        @if ($confirmingClear)
+            <div class="flex items-center gap-2">
+                <flux:text class="text-sm text-red-600 dark:text-red-400">{{ __('Delete all logs?') }}</flux:text>
+                <flux:button variant="danger" size="sm" wire:click="clearLogs">{{ __('Confirm') }}</flux:button>
+                <flux:button variant="ghost" size="sm" wire:click="$set('confirmingClear', false)">{{ __('Cancel') }}</flux:button>
+            </div>
+        @else
+            <flux:button variant="ghost" size="sm" icon="trash" wire:click="$set('confirmingClear', true)">
+                {{ __('Clear Logs') }}
+            </flux:button>
+        @endif
     </div>
 
     {{-- Filters --}}
@@ -142,8 +161,8 @@ new #[Title('Webhook Logs')] class extends Component {
                                     {{ $log->status }}
                                 </span>
                             </td>
-                            <td class="px-4 py-3 text-xs text-zinc-500 dark:text-zinc-400">
-                                {{ $log->created_at?->diffForHumans() }}
+                            <td class="px-4 py-3 text-xs text-zinc-500 dark:text-zinc-400" title="{{ $log->created_at?->toDateTimeString() }}">
+                                {{ $log->created_at?->format('M j, H:i:s') }}
                             </td>
                             <td class="px-4 py-3 text-right">
                                 <flux:button variant="ghost" size="sm" icon="eye" :href="route('webhooks.show', $log)" wire:navigate>

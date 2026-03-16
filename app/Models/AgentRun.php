@@ -20,6 +20,7 @@ class AgentRun extends Model
         'attempt',
         'status',
         'output',
+        'steps',
         'tokens_used',
         'cost',
         'duration_ms',
@@ -30,6 +31,7 @@ class AgentRun extends Model
     {
         return [
             'attempt' => 'integer',
+            'steps' => 'array',
             'tokens_used' => 'integer',
             'cost' => 'decimal:6',
             'duration_ms' => 'integer',
