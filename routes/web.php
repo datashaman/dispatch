@@ -1,8 +1,17 @@
 <?php
 
+use App\Http\Controllers\GitHubAppController;
 use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'welcome')->name('home');
+
+Route::get('github/callback', [GitHubAppController::class, 'callback'])
+    ->middleware(['auth'])
+    ->name('github.callback');
+
+Route::get('github/manifest/callback', [GitHubAppController::class, 'manifestCallback'])
+    ->middleware(['auth'])
+    ->name('github.manifest.callback');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::view('dashboard', 'dashboard')->name('dashboard');

@@ -3,6 +3,7 @@
 use App\Models\Project;
 use App\Services\ConfigSyncer;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Process;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
@@ -23,6 +24,23 @@ new #[Title('Projects')] class extends Component {
     public ?int $confirmingDelete = null;
     public string $statusMessage = '';
     public string $errorMessage = '';
+
+    public function updatedNewPath(): void
+    {
+        if (! File::isDirectory($this->newPath)) {
+            return;
+        }
+
+        $result = Process::path($this->newPath)->run('git remote get-url origin');
+
+        if ($result->successful()) {
+            $url = trim($result->output());
+            // Extract owner/repo from SSH or HTTPS URLs
+            if (preg_match('#[:/]([^/]+/[^/]+?)(?:\.git)?$#', $url, $matches)) {
+                $this->newRepo = $matches[1];
+            }
+        }
+    }
 
     public function getProviders(): array
     {
@@ -183,15 +201,16 @@ new #[Title('Projects')] class extends Component {
 
             <div class="mt-6 space-y-4">
                 <flux:field>
-                    <flux:label>{{ __('Repository') }}</flux:label>
-                    <flux:input wire:model="newRepo" placeholder="owner/repo" required />
-                    <flux:error name="newRepo" />
+                    <flux:label>{{ __('Local Path') }}</flux:label>
+                    <flux:input wire:model.live.debounce.500ms="newPath" placeholder="/path/to/repo" required />
+                    <flux:description>{{ __('Path to a local git clone. The repository will be detected automatically.') }}</flux:description>
+                    <flux:error name="newPath" />
                 </flux:field>
 
                 <flux:field>
-                    <flux:label>{{ __('Local Path') }}</flux:label>
-                    <flux:input wire:model="newPath" placeholder="/path/to/repo" required />
-                    <flux:error name="newPath" />
+                    <flux:label>{{ __('Repository') }}</flux:label>
+                    <flux:input wire:model="newRepo" placeholder="owner/repo" required />
+                    <flux:error name="newRepo" />
                 </flux:field>
             </div>
 

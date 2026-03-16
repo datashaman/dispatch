@@ -39,6 +39,9 @@ return [
         'webhook_secret' => env('GITHUB_WEBHOOK_SECRET'),
         'verify_webhook_signature' => env('VERIFY_WEBHOOK_SIGNATURE', true),
         'bot_username' => env('GITHUB_BOT_USERNAME'),
+        'app_id' => env('GITHUB_APP_ID'),
+        'app_private_key' => env('GITHUB_APP_PRIVATE_KEY'),
+        'app_private_key_path' => env('GITHUB_APP_PRIVATE_KEY_PATH'),
     ],
 
 ];

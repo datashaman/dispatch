@@ -22,4 +22,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ),
         )
         ->name('security.edit');
+
+    Route::livewire('settings/github', 'pages::settings.github')->name('github.settings');
+    Route::livewire('settings/github/{installation}/repos', 'pages::settings.github-repos')->name('github.repos');
 });
