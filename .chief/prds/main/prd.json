@@ -52,7 +52,8 @@
         "Tests for valid configs, missing fields, malformed YAML, missing file"
       ],
       "priority": 3,
-      "passes": false
+      "passes": true,
+      "inProgress": false
     },
     {
       "id": "US-004",
@@ -68,7 +69,8 @@
         "Tests for import, export, round-trip (import then export produces equivalent YAML)"
       ],
       "priority": 4,
-      "passes": false
+      "passes": true,
+      "inProgress": false
     },
     {
       "id": "US-005",
@@ -82,7 +84,8 @@
         "Tests for all commands"
       ],
       "priority": 5,
-      "passes": false
+      "passes": true,
+      "inProgress": false
     },
     {
       "id": "US-006",
@@ -96,7 +99,8 @@
         "Tests for all commands"
       ],
       "priority": 6,
-      "passes": false
+      "passes": true,
+      "inProgress": false
     },
     {
       "id": "US-007",
@@ -109,7 +113,8 @@
         "Tests for configuration and fallback behavior"
       ],
       "priority": 7,
-      "passes": false
+      "passes": true,
+      "inProgress": false
     },
     {
       "id": "US-008",
@@ -121,7 +126,8 @@
         "Tests for all commands"
       ],
       "priority": 8,
-      "passes": false
+      "passes": true,
+      "inProgress": false
     },
     {
       "id": "US-009",
@@ -135,7 +141,8 @@
         "Tests verify jobs dispatch to the `agents` queue"
       ],
       "priority": 9,
-      "passes": false
+      "passes": true,
+      "inProgress": false
     },
     {
       "id": "US-010",
