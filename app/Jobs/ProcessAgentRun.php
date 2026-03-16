@@ -8,8 +8,10 @@ use App\Executors\LaravelAiExecutor;
 use App\Models\AgentRun;
 use App\Models\Rule;
 use App\Services\PromptRenderer;
+use App\Services\WorktreeManager;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\Log;
 
 class ProcessAgentRun implements ShouldQueue
 {
@@ -40,16 +42,29 @@ class ProcessAgentRun implements ShouldQueue
         );
         $agentConfig = $this->resolveAgentConfig();
 
-        $result = $executor->execute($this->agentRun, $renderedPrompt, $agentConfig);
+        $worktree = null;
 
-        $this->agentRun->update([
-            'status' => $result->status,
-            'output' => $result->output,
-            'tokens_used' => $result->tokensUsed,
-            'cost' => $result->cost,
-            'duration_ms' => $result->durationMs,
-            'error' => $result->error,
-        ]);
+        if ($agentConfig['isolation']) {
+            $worktree = $this->createWorktree($agentConfig);
+            $agentConfig['project_path'] = $worktree['path'];
+        }
+
+        try {
+            $result = $executor->execute($this->agentRun, $renderedPrompt, $agentConfig);
+
+            $this->agentRun->update([
+                'status' => $result->status,
+                'output' => $result->output,
+                'tokens_used' => $result->tokensUsed,
+                'cost' => $result->cost,
+                'duration_ms' => $result->durationMs,
+                'error' => $result->error,
+            ]);
+        } finally {
+            if ($worktree) {
+                $this->cleanupWorktree($worktree, $agentConfig);
+            }
+        }
     }
 
     /**
@@ -98,5 +113,54 @@ class ProcessAgentRun implements ShouldQueue
             'instructions_file' => $project?->agent_instructions_file,
             'project_path' => $project?->path,
         ];
+    }
+
+    /**
+     * Create a git worktree for isolated execution.
+     *
+     * @param  array<string, mixed>  $agentConfig
+     * @return array{path: string, branch: string}
+     */
+    protected function createWorktree(array $agentConfig): array
+    {
+        $worktreeManager = app(WorktreeManager::class);
+        $projectPath = $agentConfig['project_path'];
+        $ruleId = $this->rule->rule_id;
+
+        $worktree = $worktreeManager->create($projectPath, $ruleId);
+
+        Log::info("Created worktree for rule {$ruleId}", [
+            'path' => $worktree['path'],
+            'branch' => $worktree['branch'],
+        ]);
+
+        return $worktree;
+    }
+
+    /**
+     * Clean up a worktree after execution.
+     *
+     * @param  array{path: string, branch: string}  $worktree
+     * @param  array<string, mixed>  $agentConfig
+     */
+    protected function cleanupWorktree(array $worktree, array $agentConfig): void
+    {
+        $worktreeManager = app(WorktreeManager::class);
+        $projectPath = $this->rule->project?->path ?? $agentConfig['project_path'];
+
+        $removed = $worktreeManager->cleanup(
+            $worktree['path'],
+            $worktree['branch'],
+            $projectPath,
+        );
+
+        if ($removed) {
+            Log::info("Cleaned up worktree for rule {$this->rule->rule_id} (no new commits)");
+        } else {
+            Log::info("Retained worktree for rule {$this->rule->rule_id} (commits found)", [
+                'path' => $worktree['path'],
+                'branch' => $worktree['branch'],
+            ]);
+        }
     }
 }
