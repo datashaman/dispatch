@@ -264,7 +264,8 @@
         "Tests for each tool"
       ],
       "priority": 16,
-      "passes": false
+      "passes": true,
+      "inProgress": false
     },
     {
       "id": "US-017",
@@ -280,7 +281,8 @@
         "Tests with mocked Process"
       ],
       "priority": 17,
-      "passes": false
+      "passes": true,
+      "inProgress": false
     },
     {
       "id": "US-018",
@@ -295,7 +297,8 @@
         "Tests for worktree creation, cleanup, and retention"
       ],
       "priority": 18,
-      "passes": false
+      "passes": true,
+      "inProgress": false
     },
     {
       "id": "US-019",
@@ -309,7 +312,8 @@
         "Tests for each output type"
       ],
       "priority": 19,
-      "passes": false
+      "passes": true,
+      "inProgress": false
     },
     {
       "id": "US-020",

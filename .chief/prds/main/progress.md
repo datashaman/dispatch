@@ -272,9 +272,19 @@
   - `(string)` cast on `Arr::get()` result handles null→empty string conversion cleanly
   - PromptRenderer is a pure service with no dependencies — can be used standalone or injected
 - Contracts (interfaces) live in `app/Contracts/`, executors in `app/Executors/`, AI agents in `app/Ai/Agents/`
+- Tools live in `app/Ai/Tools/` implementing `Laravel\Ai\Contracts\Tool` with `description()`, `handle(Request)`, `schema(JsonSchema)` methods
+- ToolRegistry (`app/Services/ToolRegistry.php`) maps tool name strings to Tool class instances — use `resolve(allowed, disallowed, workDir)`
+- `LaravelAiExecutor` requires `ToolRegistry` DI — always resolve via `app(LaravelAiExecutor::class)`, not `new`
 - Use `DispatchAgent::fake(['response'])` to mock AI agent responses in tests
 - Executor pattern: `app/Contracts/Executor.php` interface, implementations in `app/Executors/`
 - Agent config resolution chain: rule-level (`RuleAgentConfig`) → project-level (`Project.agent_*`) → null
+- `ProcessAgentRun::resolveExecutor()` maps `agent_executor` string to executor class — `laravel-ai` → `LaravelAiExecutor`, `claude-cli` → `ClaudeCliExecutor`
+- `Process::fake()` output has trailing newline — always `trim()` output in executors that shell out
+- `WorktreeManager` handles git worktree lifecycle — create/cleanup/remove, path: `{project}/.worktrees/{rule_id}-{hash}`
+- `ProcessAgentRun` overrides `project_path` in agentConfig when isolation is enabled, cleanup in `finally` block
+- `OutputHandler` routes agent output after successful execution — log (default), GitHub comment, GitHub reaction
+- `Process::assertNothingRan()` is correct for asserting no processes ran (not `assertDidntRun()` without args)
+- Tests with `isolation: true` in `RuleAgentConfig` need a real git directory via `sys_get_temp_dir()` + `git init`
 ---
 
 ## 2026-03-16 - US-015
@@ -306,4 +316,97 @@
   - Agent config resolution: rule-level → project-level → null fallback chain, done in `ProcessAgentRun::resolveAgentConfig()`
   - `hrtime(true)` gives nanoseconds — divide by 1_000_000 for milliseconds for duration tracking
   - Contracts (interfaces) live in `app/Contracts/`, executors in `app/Executors/`, AI agents in `app/Ai/Agents/`
+---
+
+## 2026-03-16 - US-016
+- Implemented 6 agent tools as Laravel AI SDK Tool classes: ReadTool, EditTool, WriteTool, BashTool, GlobTool, GrepTool
+- All tools accept a `workingDirectory` constructor parameter and scope operations to that directory
+- ReadTool/EditTool/WriteTool include path traversal prevention via `realpath()` checks
+- BashTool uses `Process::path()` to set working directory, 120s timeout
+- GlobTool uses Symfony Finder for pattern matching
+- GrepTool shells out to `grep -rn` with optional `--include` filter
+- Created ToolRegistry service to resolve tool name strings (from config) to Tool instances
+- ToolRegistry supports allowed/disallowed tool filtering with disallowed taking precedence
+- Updated LaravelAiExecutor to accept ToolRegistry via constructor injection and pass resolved tools to DispatchAgent
+- Updated existing ExecutorTest to use `app(LaravelAiExecutor::class)` instead of direct instantiation
+- 26 new tests covering all tools, ToolRegistry resolution, filtering, interface compliance, working directory scoping
+- Files changed:
+  - app/Ai/Tools/{ReadTool,EditTool,WriteTool,BashTool,GlobTool,GrepTool}.php (new)
+  - app/Services/ToolRegistry.php (new)
+  - app/Executors/LaravelAiExecutor.php (modified — added ToolRegistry DI and tool resolution)
+  - tests/Feature/AgentToolsTest.php (new)
+  - tests/Feature/ExecutorTest.php (modified — updated instantiation)
+- **Learnings for future iterations:**
+  - Tools live in `app/Ai/Tools/` and implement `Laravel\Ai\Contracts\Tool`
+  - Tool `schema()` method uses `JsonSchema` fluent API: `$schema->string()->description('...')->required()`
+  - Tool `handle()` receives a `Laravel\Ai\Tools\Request` with `string()`, `all()` methods
+  - WriteTool's `resolvePath` can't use `realpath()` for non-existent nested directories — use manual path normalization instead
+  - `LaravelAiExecutor` now requires `ToolRegistry` via DI — use `app(LaravelAiExecutor::class)` not `new LaravelAiExecutor`
+  - ToolRegistry maps string names ('Read', 'Edit', etc.) to Tool classes — config stores names, registry resolves to instances
+  - Symfony Finder is available as a transitive dependency for file pattern matching
+---
+
+## 2026-03-16 - US-017
+- Implemented `ClaudeCliExecutor` that shells out to `claude` CLI via `Process::run()` with rendered prompt
+- Sets working directory to project path (or worktree path)
+- Passes `--allowedTools` and `--disallowedTools` flags from agent config
+- Passes `--model` flag when model is configured
+- Loads system prompt from `instructions_file` via `--system-prompt` flag
+- Uses `--print --output-format text` for non-interactive output capture
+- Updated `ProcessAgentRun` job to resolve `ClaudeCliExecutor` when `agent_executor` is `claude-cli`
+- 12 tests covering: interface compliance, success/failure execution, allowed/disallowed tools flags, model flag, system prompt loading, missing instructions file, working directory, job integration, output format
+- Files changed:
+  - app/Executors/ClaudeCliExecutor.php (new)
+  - app/Jobs/ProcessAgentRun.php (modified — added claude-cli executor resolution)
+  - tests/Feature/ClaudeCliExecutorTest.php (new)
+- **Learnings for future iterations:**
+  - `Process::fake()` output includes trailing newline — use `trim()` on `$result->output()` for clean comparison
+  - `Process::assertRan()` callback receives `PendingProcess` — check `$process->command` (array) and `$process->path` for assertions
+  - Claude CLI uses `--print` for non-interactive mode and `--output-format text` for plain text output
+  - `ClaudeCliExecutor` doesn't need `ToolRegistry` DI — tools are passed as CLI flag strings, not PHP objects
+  - The `resolveExecutor()` match in `ProcessAgentRun` maps `agent_executor` string to executor class — add new executors there
+---
+
+## 2026-03-16 - US-018
+- Implemented `WorktreeManager` service for git worktree lifecycle management
+- Creates worktrees at `{project_path}/.worktrees/{rule_id}-{hash}` with branch `dispatch/{rule_id}/{hash}`
+- `hasNewCommits()` compares worktree HEAD vs main repo HEAD to detect agent commits
+- `cleanup()` removes worktree if no new commits, retains it if commits exist (for PR creation)
+- `remove()` force-removes worktree and deletes its branch
+- Updated `ProcessAgentRun` job to create worktree when `isolation: true` and override `project_path` in agent config
+- Worktree cleanup runs in `finally` block to ensure cleanup even on failure
+- 8 tests covering: worktree creation with correct naming, no-commit detection, commit detection, cleanup removal, cleanup retention, job integration with isolation on, job integration with isolation off, creation failure exception
+- Files changed:
+  - app/Services/WorktreeManager.php (new)
+  - app/Jobs/ProcessAgentRun.php (modified — added worktree creation/cleanup logic)
+  - tests/Feature/WorktreeIsolationTest.php (new)
+- **Learnings for future iterations:**
+  - `WorktreeManager` lives in `app/Services/` — manages git worktree lifecycle (create, hasNewCommits, remove, cleanup)
+  - Worktree tests need a real git repo — use `sys_get_temp_dir()` with `git init` in `beforeEach`, clean up in `afterEach`
+  - `Process::run()` in tests hits the real shell (not faked) for git operations — these are integration tests
+  - Worktree path convention: `{project}/.worktrees/{rule_id}-{hash}`, branch: `dispatch/{rule_id}/{hash}`
+  - `finally` block ensures worktree cleanup even when executor throws exceptions
+---
+
+## 2026-03-16 - US-019
+- Implemented `OutputHandler` service to route agent output to configured destinations
+- `log: true` — output already saved to `agent_runs.output` by `ProcessAgentRun` (no additional action needed)
+- `github_comment: true` — posts agent output as a comment on the source issue/PR/discussion via `gh api` CLI
+- `github_reaction` — adds a reaction to the triggering comment via `gh api` CLI
+- `resolveGitHubResource()` determines correct resource type (issue, PR, discussion) from webhook payload
+- `resolveCommentResourceType()` maps payload to correct reactions API endpoint (issues/comments, pulls/comments, discussions/comments)
+- Integrated `OutputHandler` into `ProcessAgentRun` job — called after successful execution
+- Fixed pre-existing test failure in `ExecutorTest` — "rule-level agent config" test had `isolation: true` but non-existent project path, causing `WorktreeManager` to fail
+- 12 tests covering: log output, GitHub comment on issue/PR/discussion, GitHub reaction on issue/PR/discussion, no output config, missing repo/comment warnings, combined comment+reaction, resource type resolution
+- Files changed:
+  - app/Services/OutputHandler.php (new)
+  - app/Jobs/ProcessAgentRun.php (modified — integrated OutputHandler after successful execution)
+  - tests/Feature/OutputHandlerTest.php (new)
+  - tests/Feature/ExecutorTest.php (modified — fixed pre-existing worktree test isolation bug)
+- **Learnings for future iterations:**
+  - `Process::assertNothingRan()` is the correct way to assert no processes ran in Laravel 12 (not `assertDidntRun()` which requires a callback)
+  - GitHub API uses `issues/{number}/comments` endpoint for both issues and PRs (PRs are issues in GitHub's API)
+  - Reactions API differs by resource: `issues/comments/{id}/reactions`, `pulls/comments/{id}/reactions`, `discussions/comments/{id}/reactions`
+  - `OutputHandler` is called only on successful execution (`result->status === 'success'`) to avoid posting error output
+  - Tests with `isolation: true` in `RuleAgentConfig` need a real git directory — use `sys_get_temp_dir()` with `git init`
 ---

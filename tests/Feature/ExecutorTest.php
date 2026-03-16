@@ -10,6 +10,7 @@ use App\Models\Project;
 use App\Models\Rule;
 use App\Models\RuleAgentConfig;
 use App\Models\WebhookLog;
+use Illuminate\Support\Facades\Process;
 use Laravel\Ai\Contracts\Agent;
 use Laravel\Ai\Contracts\HasTools;
 
@@ -296,9 +297,13 @@ test('ProcessAgentRun job resolves agent config with project-level fallback', fu
 test('ProcessAgentRun job uses rule-level agent config when available', function () {
     DispatchAgent::fake(['Rule-level response']);
 
+    $tmpDir = sys_get_temp_dir().'/'.uniqid('dispatch-test-');
+    mkdir($tmpDir);
+    Process::run(['git', 'init', $tmpDir]);
+
     $project = Project::factory()->create([
         'repo' => 'owner/repo',
-        'path' => '/tmp/test-project',
+        'path' => $tmpDir,
         'agent_provider' => 'anthropic',
         'agent_model' => 'claude-sonnet-4-20250514',
     ]);

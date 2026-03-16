@@ -7,6 +7,7 @@ use App\Executors\ClaudeCliExecutor;
 use App\Executors\LaravelAiExecutor;
 use App\Models\AgentRun;
 use App\Models\Rule;
+use App\Services\OutputHandler;
 use App\Services\PromptRenderer;
 use App\Services\WorktreeManager;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -60,6 +61,14 @@ class ProcessAgentRun implements ShouldQueue
                 'duration_ms' => $result->durationMs,
                 'error' => $result->error,
             ]);
+
+            if ($result->status === 'success') {
+                app(OutputHandler::class)->handle(
+                    $this->agentRun,
+                    $this->rule,
+                    $this->payload,
+                );
+            }
         } finally {
             if ($worktree) {
                 $this->cleanupWorktree($worktree, $agentConfig);
