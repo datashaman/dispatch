@@ -182,7 +182,7 @@ new #[Title('Webhook Log Detail')] class extends Component {
         </div>
 
         {{-- Agent Run Detail Modal --}}
-        <flux:modal wire:model="showAgentRunDetail">
+        <flux:modal wire:model="showAgentRunDetail" class="md:w-4xl">
             @php $agentRun = $this->getViewingAgentRun(); @endphp
             @if ($agentRun)
                 <flux:heading size="lg">{{ __('Agent Run Detail') }}</flux:heading>
@@ -215,9 +215,68 @@ new #[Title('Webhook Log Detail')] class extends Component {
                     </div>
                 </div>
 
+                @if ($agentRun->steps && count($agentRun->steps) > 0)
+                    <div class="mt-4">
+                        <flux:text variant="subtle" class="text-xs uppercase mb-2">{{ __('Agent Steps') }}</flux:text>
+                        <div class="space-y-3 max-h-96 overflow-y-auto">
+                            @foreach ($agentRun->steps as $stepIndex => $step)
+                                <div class="rounded-lg border border-zinc-200 dark:border-zinc-700 p-3">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <flux:text class="text-xs font-medium">{{ __('Step') }} {{ $stepIndex + 1 }}</flux:text>
+                                        <div class="flex items-center gap-2">
+                                            @if (isset($step['usage']))
+                                                <flux:text class="text-xs text-zinc-500">
+                                                    {{ number_format(($step['usage']['promptTokens'] ?? 0) + ($step['usage']['completionTokens'] ?? 0)) }} {{ __('tokens') }}
+                                                </flux:text>
+                                            @endif
+                                            @if (isset($step['finish_reason']))
+                                                <flux:badge size="sm" color="{{ $step['finish_reason'] === 'stop' ? 'green' : 'amber' }}">
+                                                    {{ $step['finish_reason'] }}
+                                                </flux:badge>
+                                            @endif
+                                        </div>
+                                    </div>
+
+                                    @if (! empty($step['tool_calls']))
+                                        <div class="space-y-2 mb-2">
+                                            @foreach ($step['tool_calls'] as $toolCall)
+                                                <div class="rounded bg-blue-50 dark:bg-blue-900/20 p-2">
+                                                    <flux:text class="text-xs font-medium text-blue-700 dark:text-blue-300">
+                                                        {{ $toolCall['name'] ?? 'unknown' }}
+                                                    </flux:text>
+                                                    @if (! empty($toolCall['arguments']))
+                                                        <pre class="mt-1 text-xs font-mono text-blue-600 dark:text-blue-400 whitespace-pre-wrap break-all">{{ json_encode($toolCall['arguments'], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) }}</pre>
+                                                    @endif
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    @endif
+
+                                    @if (! empty($step['tool_results']))
+                                        <div class="space-y-2 mb-2">
+                                            @foreach ($step['tool_results'] as $toolResult)
+                                                <div class="rounded bg-emerald-50 dark:bg-emerald-900/20 p-2">
+                                                    <flux:text class="text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                                                        {{ $toolResult['name'] ?? 'result' }}
+                                                    </flux:text>
+                                                    <pre class="mt-1 text-xs font-mono text-emerald-600 dark:text-emerald-400 whitespace-pre-wrap break-all max-h-32 overflow-y-auto">{{ is_string($toolResult['result'] ?? null) ? $toolResult['result'] : json_encode($toolResult['result'] ?? '', JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) }}</pre>
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    @endif
+
+                                    @if (! empty($step['text']))
+                                        <pre class="text-sm font-mono whitespace-pre-wrap text-zinc-700 dark:text-zinc-300">{{ $step['text'] }}</pre>
+                                    @endif
+                                </div>
+                            @endforeach
+                        </div>
+                    </div>
+                @endif
+
                 @if ($agentRun->output)
                     <div class="mt-4">
-                        <flux:text variant="subtle" class="text-xs uppercase">{{ __('Output') }}</flux:text>
+                        <flux:text variant="subtle" class="text-xs uppercase">{{ __('Final Output') }}</flux:text>
                         <pre class="mt-2 rounded-lg bg-zinc-100 dark:bg-zinc-800 p-4 text-sm font-mono whitespace-pre-wrap max-h-64 overflow-y-auto">{{ $agentRun->output }}</pre>
                     </div>
                 @endif
