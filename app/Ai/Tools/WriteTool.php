@@ -23,6 +23,10 @@ class WriteTool implements Tool
     {
         $path = $this->resolvePath($request->string('path'));
 
+        if ($path === null) {
+            return "Error: Path is outside the working directory: {$request->string('path')}";
+        }
+
         $dir = dirname($path);
 
         if (! File::isDirectory($dir)) {
@@ -46,16 +50,17 @@ class WriteTool implements Tool
         ];
     }
 
-    protected function resolvePath(string $relativePath): string
+    protected function resolvePath(string $relativePath): ?string
     {
-        $baseDir = realpath($this->workingDirectory) ?: $this->workingDirectory;
-        $full = $baseDir.'/'.ltrim($relativePath, '/');
+        $baseDir = rtrim($this->workingDirectory, '/').'/';
+        $full = $baseDir.ltrim($relativePath, '/');
 
         // Normalize the path to remove ../ segments
         $normalized = $this->normalizePath($full);
+        $normalizedBase = rtrim($this->normalizePath($baseDir), '/').'/';
 
-        if (! str_starts_with($normalized, $baseDir)) {
-            return $baseDir.'/__invalid__';
+        if (! str_starts_with($normalized, $normalizedBase)) {
+            return null;
         }
 
         return $normalized;

@@ -104,7 +104,29 @@ class RuleMatchingEngine
             FilterOperator::NotContains => ! str_contains($fieldString, $expectedValue),
             FilterOperator::StartsWith => str_starts_with($fieldString, $expectedValue),
             FilterOperator::EndsWith => str_ends_with($fieldString, $expectedValue),
-            FilterOperator::Matches => (bool) preg_match($expectedValue, $fieldString),
+            FilterOperator::Matches => $this->safeRegexMatch($expectedValue, $fieldString),
         };
+    }
+
+    /**
+     * Safely evaluate a regex match, returning false on invalid patterns.
+     */
+    protected function safeRegexMatch(string $pattern, string $subject): bool
+    {
+        try {
+            $result = @preg_match($pattern, $subject);
+        } catch (\Throwable) {
+            Log::warning("RuleMatchingEngine: invalid regex pattern '{$pattern}'");
+
+            return false;
+        }
+
+        if ($result === false) {
+            Log::warning("RuleMatchingEngine: invalid regex pattern '{$pattern}'");
+
+            return false;
+        }
+
+        return (bool) $result;
     }
 }

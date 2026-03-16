@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -15,9 +16,13 @@ class WorktreeManager
      */
     public function create(string $projectPath, string $ruleId): array
     {
+        $safeRuleId = preg_replace('/[^a-zA-Z0-9\-_]/', '-', $ruleId);
         $shortHash = Str::random(8);
-        $branch = "dispatch/{$ruleId}/{$shortHash}";
-        $worktreePath = rtrim($projectPath, '/').'/.worktrees/'.$ruleId.'-'.$shortHash;
+        $branch = "dispatch/{$safeRuleId}/{$shortHash}";
+        $worktreeBase = rtrim($projectPath, '/').'/.worktrees';
+        $worktreePath = $worktreeBase.'/'.$safeRuleId.'-'.$shortHash;
+
+        File::ensureDirectoryExists($worktreeBase);
 
         $result = Process::path($projectPath)
             ->run(['git', 'worktree', 'add', '-b', $branch, $worktreePath]);

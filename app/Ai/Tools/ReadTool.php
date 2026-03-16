@@ -23,6 +23,10 @@ class ReadTool implements Tool
     {
         $path = $this->resolvePath($request->string('path'));
 
+        if ($path === null) {
+            return "Error: Path is outside the working directory: {$request->string('path')}";
+        }
+
         if (! File::exists($path)) {
             return "Error: File not found: {$request->string('path')}";
         }
@@ -43,15 +47,20 @@ class ReadTool implements Tool
         ];
     }
 
-    protected function resolvePath(string $relativePath): string
+    protected function resolvePath(string $relativePath): ?string
     {
         $full = rtrim($this->workingDirectory, '/').'/'.ltrim($relativePath, '/');
-        $resolved = realpath($full) ?: $full;
+        $resolved = realpath($full);
 
-        if (! str_starts_with($resolved, realpath($this->workingDirectory) ?: $this->workingDirectory)) {
-            return '__invalid__';
+        if ($resolved !== false) {
+            $baseDir = rtrim(realpath($this->workingDirectory) ?: $this->workingDirectory, '/').'/';
+
+            return str_starts_with($resolved, $baseDir) ? $resolved : null;
         }
 
-        return $resolved;
+        // File doesn't exist yet — compare using raw working directory
+        $baseDir = rtrim($this->workingDirectory, '/').'/';
+
+        return str_starts_with($full, $baseDir) ? $full : null;
     }
 }

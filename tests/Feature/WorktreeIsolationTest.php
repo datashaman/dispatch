@@ -8,6 +8,7 @@ use App\Models\Rule;
 use App\Models\RuleAgentConfig;
 use App\Models\WebhookLog;
 use App\Services\WorktreeManager;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 
 beforeEach(function () {
@@ -177,6 +178,6 @@ test('WorktreeManager throws exception on worktree creation failure', function (
     try {
         $manager->create($nonGitPath, 'test-rule');
     } finally {
-        rmdir($nonGitPath);
+        File::deleteDirectory($nonGitPath);
     }
 })->throws(RuntimeException::class);

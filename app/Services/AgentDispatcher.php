@@ -63,12 +63,14 @@ class AgentDispatcher
                 'agent_run_id' => $agentRun->id,
             ];
 
-            // If this rule has continue_on_error disabled and fails, stop processing remaining rules.
-            // For synchronous processing (sync queue driver in tests), check if the run already failed.
-            $agentRun->refresh();
-            if (! $rule->continue_on_error && $agentRun->status === 'failed') {
-                $haltPipeline = true;
-                $results[array_key_last($results)]['status'] = 'failed';
+            // Pipeline halting only works with sync queue driver (e.g. in tests).
+            // For async queues, jobs check pipeline state before executing.
+            if (config('queue.default') === 'sync') {
+                $agentRun->refresh();
+                if (! $rule->continue_on_error && $agentRun->status === 'failed') {
+                    $haltPipeline = true;
+                    $results[array_key_last($results)]['status'] = 'failed';
+                }
             }
         }
 
