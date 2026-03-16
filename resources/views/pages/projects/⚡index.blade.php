@@ -144,6 +144,9 @@ new #[Title('Projects')] class extends Component {
                         </div>
 
                         <div class="flex items-center gap-1">
+                            <flux:button variant="ghost" size="sm" icon="bolt" :href="route('rules.index', $project)" wire:navigate>
+                                {{ __('Rules') }}
+                            </flux:button>
                             <flux:button variant="ghost" size="sm" icon="arrow-down-tray" wire:click="importConfig({{ $project->id }})" wire:loading.attr="disabled">
                                 {{ __('Import') }}
                             </flux:button>

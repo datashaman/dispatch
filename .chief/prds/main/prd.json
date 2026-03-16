@@ -356,7 +356,8 @@
         "Tests for dry-run responses"
       ],
       "priority": 22,
-      "passes": false
+      "passes": true,
+      "inProgress": false
     },
     {
       "id": "US-023",
@@ -372,7 +373,8 @@
         "Tests for health check logic"
       ],
       "priority": 23,
-      "passes": false
+      "passes": true,
+      "inProgress": false
     },
     {
       "id": "US-024",
@@ -388,7 +390,8 @@
         "Styled with Tailwind CSS v4"
       ],
       "priority": 24,
-      "passes": false
+      "passes": true,
+      "inProgress": false
     },
     {
       "id": "US-025",
@@ -406,7 +409,8 @@
         "Styled with Tailwind CSS v4"
       ],
       "priority": 25,
-      "passes": false
+      "passes": true,
+      "inProgress": false
     },
     {
       "id": "US-026",

@@ -280,6 +280,11 @@
 - Agent config resolution chain: rule-level (`RuleAgentConfig`) → project-level (`Project.agent_*`) → null
 - `ProcessAgentRun::resolveExecutor()` maps `agent_executor` string to executor class — `laravel-ai` → `LaravelAiExecutor`, `claude-cli` → `ClaudeCliExecutor`
 - `Process::fake()` output has trailing newline — always `trim()` output in executors that shell out
+- Volt page components must have a single root element (`<section>`) — `<x-layouts::app>` causes `MultipleRootElementsDetectedException`
+- Volt page routes: `Route::livewire('path', 'pages::namespace.component')->name('route.name')` in `routes/web.php`
+- Volt pages use class-based style: `new #[Title('...')] class extends Component { ... }; ?>`
+- For Livewire component messages, use public properties (not `session()->flash()`) — testable via `assertSet()`
+- Mockery can't extend readonly classes — provide real DTO instances via `andReturn()`
 - `WorktreeManager` handles git worktree lifecycle — create/cleanup/remove, path: `{project}/.worktrees/{rule_id}-{hash}`
 - `ProcessAgentRun` overrides `project_path` in agentConfig when isolation is enabled, cleanup in `finally` block
 - `OutputHandler` routes agent output after successful execution — log (default), GitHub comment, GitHub reaction
@@ -288,6 +293,8 @@
 - `ConversationMemory` derives thread keys from webhook payloads: `{repo}:{type}:{number}` — use for any thread-scoped feature
 - Executor interface accepts optional `$conversationHistory` array — backward compatible with `[]` default
 - `DispatchAgent` implements `Conversational` — set history via `withConversationHistory()` before `prompt()`
+- For Artisan command output assertions, use `Artisan::call()` + `Artisan::output()` + `expect()->toContain()` — `expectsOutputToContain` is unreliable
+- `Process::fake(['*' => Process::result(...)])` is safer than exact command string keys for pattern matching
 ---
 
 ## 2026-03-16 - US-015
@@ -462,4 +469,91 @@
   - `$this->attempts()` on a job returns the current attempt number (1-based) — available from the `Queueable` trait
   - When executor catches exceptions and returns `ExecutionResult(status: 'failed')`, you must re-throw for queue retry to work
   - `shouldRetry()` checks `$this->tries > 1 && $this->attempts() < $this->tries` to avoid throwing on the last attempt
+---
+
+## 2026-03-16 - US-022
+- Implemented dry-run mode for webhook endpoint via `?dry-run=true` query parameter
+- Returns matched rules with rendered prompts without dispatching any agent jobs
+- Response includes `dryRun: true` flag and results array with `rule`, `name`, `prompt` per matched rule
+- Added `PromptRenderer` injection to `WebhookController` for template rendering in dry-run mode
+- Webhook logging and rule matching still execute normally — only job dispatching is skipped
+- 7 tests covering: rendered prompts, no job dispatch, empty matches, multiple rules, webhook logging, normal processing without flag, nested path rendering
+- Files changed:
+  - app/Http/Controllers/WebhookController.php (modified — added dry-run branch with PromptRenderer)
+  - tests/Feature/DryRunModeTest.php (new)
+- **Learnings for future iterations:**
+  - `$request->boolean('dry-run')` handles query parameter parsing cleanly — works with `?dry-run=true`
+  - Dry-run logic is best placed after rule matching but before dispatching — reuses existing matching pipeline
+  - PromptRenderer was already available as a service — just needed DI in the controller
+---
+
+## 2026-03-16 - US-023
+- Implemented `dispatch:health` Artisan command to verify system dependencies
+- Checks `gh` CLI is installed and authenticated via `gh auth status`
+- Checks Redis is reachable via `Redis::ping()`
+- Checks all registered project paths exist on disk
+- Checks `dispatch.yml` is present and valid for each project (via ConfigLoader)
+- Reports PASS/FAIL per check with actionable error messages
+- Returns exit code 0 on all pass, 1 on any failure
+- 9 tests covering: all healthy, gh not authenticated, gh not installed, Redis unreachable, missing project path, missing dispatch.yml, invalid dispatch.yml, no projects, mixed pass/fail states
+- Files changed:
+  - app/Console/Commands/HealthCheckCommand.php (new)
+  - tests/Feature/HealthCheckTest.php (new)
+- **Learnings for future iterations:**
+  - `expectsOutputToContain` in Artisan command tests does NOT reliably match all output — use `Artisan::call()` + `Artisan::output()` with Pest `expect()->toContain()` instead
+  - `Process::fake()` with string key patterns (e.g., `'gh auth status'`) may not match — use `'*'` wildcard for single-process tests
+  - `Redis::shouldReceive('ping')` with Mockery works for faking Redis connectivity checks
+  - `$this->line()` is preferred over `$this->error()` or `$this->info()` for mixed-status output lines — avoids formatting issues in tests
+---
+
+## 2026-03-16 - US-024
+- Implemented Project Management UI as a Volt single-file component at `resources/views/pages/projects/⚡index.blade.php`
+- Lists all registered projects with repo and path
+- Add project via modal form with repo + path validation (path must exist on disk, repo must be unique)
+- Remove project with inline confirmation (two-click delete pattern)
+- Import config from `dispatch.yml` via ConfigSyncer service
+- Export config to `dispatch.yml` via ConfigSyncer service
+- Status/error messages displayed via Flux callout components
+- Added "Projects" nav item to sidebar layout
+- Added route at `/projects` (auth + verified middleware)
+- Built with Livewire/Volt class-based pattern, Flux UI components, Tailwind CSS v4
+- 13 tests covering: auth, listing, empty state, add/remove, validation (unique repo, path exists, required fields), import/export with mocked ConfigSyncer, error handling
+- Files changed:
+  - resources/views/pages/projects/⚡index.blade.php (new)
+  - resources/views/layouts/app/sidebar.blade.php (modified — added Projects nav item)
+  - routes/web.php (modified — added projects route)
+  - tests/Feature/ProjectManagementUiTest.php (new)
+- **Learnings for future iterations:**
+  - Volt page components must have a single root HTML element — `<x-layouts::app>` expands to a full document and causes `MultipleRootElementsDetectedException`; use `<section>` as root and let the layout be set via `Route::livewire()`
+  - `session()->flash()` is not testable via `Volt::test()` — use public properties (`$statusMessage`, `$errorMessage`) for component-level messages instead
+  - Mockery can't mock readonly DTO classes like `DispatchConfig` — mock the service returning them and provide real DTO instances via `andReturn()`
+  - Volt page files use `⚡` prefix (Unicode lightning bolt) for auto-discovery
+  - `Route::livewire('path', 'pages::namespace.component')` registers Volt page routes
+  - Use `assertSet('property', 'value')` for testing Livewire component public properties
+---
+
+## 2026-03-16 - US-025
+- Implemented Rules & Filters Management UI as a Volt single-file component at `resources/views/pages/rules/⚡index.blade.php`
+- Lists all rules for a project ordered by sort_order with event type, name, circuit break badge
+- Create, edit, and delete rules via modal forms with validation (unique rule_id per project)
+- Manage filters per rule: add, edit, remove with operator validation against FilterOperator enum
+- Configure agent settings per rule: provider, model, max tokens, tools, disallowed tools, isolation
+- Configure output settings per rule: log, GitHub comment, GitHub reaction
+- Configure retry settings per rule: enabled, max attempts, delay
+- Prompt template preview with extracted template variables display
+- Added "Rules" link to each project in the Projects UI for navigation
+- Route at `/projects/{project}/rules` with auth + verified middleware
+- 26 tests covering: auth, listing, CRUD for rules/filters, validation, agent/output/retry config, prompt preview, status messages, cross-project isolation
+- Files changed:
+  - resources/views/pages/rules/⚡index.blade.php (new)
+  - resources/views/pages/projects/⚡index.blade.php (modified — added Rules link per project)
+  - routes/web.php (modified — added rules route)
+  - tests/Feature/RulesFiltersUiTest.php (new)
+- **Learnings for future iterations:**
+  - Blade `{{ }}` in HTML attribute placeholders causes parse errors — use plain text placeholders instead
+  - `name` column in rules table is NOT NULL — pass empty string not null when name is optional in UI
+  - Rule uniqueness validation scoped to project: `Rule::unique('rules', 'rule_id')->where('project_id', $projectId)`
+  - `updateOrCreate` works well for all three config types (agent, output, retry) — matches on `rule_id`
+  - Volt component `mount()` receives route parameters — use `{project}` route param to scope to a project
+  - `getTemplateVariables()` extracts `{{ event.* }}` template variables via regex for preview display
 ---
