@@ -427,7 +427,8 @@
         "Styled with Tailwind CSS v4"
       ],
       "priority": 26,
-      "passes": false
+      "passes": true,
+      "inProgress": false
     },
     {
       "id": "US-027",
@@ -440,7 +441,8 @@
         "Tests for caching and cache clearing"
       ],
       "priority": 27,
-      "passes": false
+      "passes": true,
+      "inProgress": false
     },
     {
       "id": "US-028",

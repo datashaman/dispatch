@@ -21,12 +21,14 @@ class Project extends Model
         'agent_model',
         'agent_instructions_file',
         'agent_secrets',
+        'cache_config',
     ];
 
     protected function casts(): array
     {
         return [
             'agent_secrets' => 'array',
+            'cache_config' => 'boolean',
         ];
     }
 

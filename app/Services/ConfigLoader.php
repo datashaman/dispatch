@@ -10,6 +10,7 @@ use App\DataTransferObjects\RetryConfig;
 use App\DataTransferObjects\RuleConfig;
 use App\Enums\FilterOperator;
 use App\Exceptions\ConfigLoadException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
@@ -18,8 +19,30 @@ class ConfigLoader
 {
     /**
      * Load and validate a dispatch.yml from the given project path.
+     * If the config has caching enabled, the result is cached.
      */
     public function load(string $projectPath): DispatchConfig
+    {
+        $cacheKey = self::cacheKey($projectPath);
+
+        $cached = Cache::get($cacheKey);
+        if ($cached instanceof DispatchConfig) {
+            return $cached;
+        }
+
+        $config = $this->loadFromDisk($projectPath);
+
+        if ($config->cacheConfig) {
+            Cache::put($cacheKey, $config);
+        }
+
+        return $config;
+    }
+
+    /**
+     * Load config from disk without checking cache.
+     */
+    public function loadFromDisk(string $projectPath): DispatchConfig
     {
         $filePath = rtrim($projectPath, '/').'/dispatch.yml';
 
@@ -38,6 +61,22 @@ class ConfigLoader
         }
 
         return $this->validate($data, $filePath);
+    }
+
+    /**
+     * Clear cached config for a project path.
+     */
+    public function clearCache(string $projectPath): void
+    {
+        Cache::forget(self::cacheKey($projectPath));
+    }
+
+    /**
+     * Generate the cache key for a project path.
+     */
+    public static function cacheKey(string $projectPath): string
+    {
+        return 'dispatch:config:'.md5(rtrim($projectPath, '/'));
     }
 
     /**

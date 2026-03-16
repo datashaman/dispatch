@@ -24,7 +24,11 @@ class ConfigSyncer
      */
     public function import(Project $project): DispatchConfig
     {
-        $config = $this->configLoader->load($project->path);
+        // Always load from disk on import to get the latest YAML
+        $config = $this->configLoader->loadFromDisk($project->path);
+
+        // Invalidate any cached config
+        $this->configLoader->clearCache($project->path);
 
         $this->syncProjectAgentConfig($project, $config);
         $this->syncRules($project, $config);
@@ -38,6 +42,9 @@ class ConfigSyncer
     public function export(Project $project): DispatchConfig
     {
         $config = $this->buildConfigFromDatabase($project);
+
+        // Invalidate any cached config since we're writing new YAML
+        $this->configLoader->clearCache($project->path);
 
         $yaml = $this->configToYaml($config);
         $filePath = rtrim($project->path, '/').'/dispatch.yml';
@@ -96,7 +103,7 @@ class ConfigSyncer
             agentProvider: $project->agent_provider,
             agentModel: $project->agent_model,
             secrets: $project->agent_secrets,
-            cacheConfig: false,
+            cacheConfig: (bool) $project->cache_config,
             rules: $rules,
         );
     }
@@ -139,6 +146,7 @@ class ConfigSyncer
             'agent_model' => $config->agentModel,
             'agent_instructions_file' => $config->agentInstructionsFile,
             'agent_secrets' => $config->secrets,
+            'cache_config' => $config->cacheConfig,
         ]);
     }
 

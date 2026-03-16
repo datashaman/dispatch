@@ -22,6 +22,8 @@
 - `expectsOutputToContain` may not match all output — prefer model assertions for data verification, use `expectsTable` for table output
 - Project-level agent config stored directly on `projects` table (agent_name, agent_executor, agent_provider, agent_model, agent_instructions_file, agent_secrets)
 - Use `Yaml::dump($data, 10, 2, Yaml::DUMP_MULTI_LINE_LITERAL_BLOCK)` for human-readable YAML export
+- `ConfigLoader::load()` checks cache first; use `loadFromDisk()` to bypass cache (e.g., in import operations)
+- Config cache keys: `dispatch:config:{md5(path)}` — use `ConfigLoader::clearCache($path)` to invalidate
 ---
 
 ## 2026-03-16 - US-001
@@ -295,6 +297,7 @@
 - `DispatchAgent` implements `Conversational` — set history via `withConversationHistory()` before `prompt()`
 - For Artisan command output assertions, use `Artisan::call()` + `Artisan::output()` + `expect()->toContain()` — `expectsOutputToContain` is unreliable
 - `Process::fake(['*' => Process::result(...)])` is safer than exact command string keys for pattern matching
+- For Livewire filter tests, use `$component->instance()->getMethod()` to verify query results — `assertDontSee` fails when values appear in filter dropdowns
 ---
 
 ## 2026-03-16 - US-015
@@ -556,4 +559,52 @@
   - `updateOrCreate` works well for all three config types (agent, output, retry) — matches on `rule_id`
   - Volt component `mount()` receives route parameters — use `{project}` route param to scope to a project
   - `getTemplateVariables()` extracts `{{ event.* }}` template variables via regex for preview display
+---
+
+## 2026-03-16 - US-026
+- Implemented Webhook Log Viewer & Agent Run Monitoring UI with two Volt pages
+- List page (`webhooks/index`): displays all webhook logs in a table with event type, repo, matched rules count, status, timestamp
+- Filtering by repo, event type, and status via `<flux:select>` dropdowns with `wire:model.live`
+- Detail page (`webhooks/show`): summary cards, matched rules, agent runs table, full JSON payload
+- Agent run detail modal shows status, attempt, duration, tokens, cost, output, and error
+- Auto-refresh via `wire:poll.5s` when any agent runs are in `queued` or `running` status
+- Added "Webhook Logs" sidebar nav item with inbox icon
+- Routes at `/webhooks` and `/webhooks/{webhookLog}` with auth + verified middleware
+- 17 tests covering: auth, listing, empty state, filtering (repo, event type, status), clear filters, detail page, payload display, agent run metrics, agent run detail modal, error display, polling detection, not found
+- Files changed:
+  - resources/views/pages/webhooks/⚡index.blade.php (new)
+  - resources/views/pages/webhooks/⚡show.blade.php (new)
+  - resources/views/layouts/app/sidebar.blade.php (modified — added Webhook Logs nav item)
+  - routes/web.php (modified — added webhook routes)
+  - tests/Feature/WebhookLogViewerUiTest.php (new)
+- **Learnings for future iterations:**
+  - Filter dropdowns populate from DB distinct values — `assertDontSee` on filtered-out values fails because they still appear in dropdown options
+  - For filter tests, use `$component->instance()->getLogs()` to verify the query results instead of `assertDontSee`
+  - `wire:poll.5s` conditional polling via `@if` directive works for auto-refresh on in-progress runs
+  - `withCount('agentRuns')` adds `agent_runs_count` for efficient matched rules display without N+1
+  - Webhook log detail uses `{webhookLog}` route param matching the model name for implicit binding
+---
+
+## 2026-03-16 - US-027
+- Implemented config caching for parsed dispatch.yml configs
+- Added `cache_config` boolean column to `projects` table via migration
+- Updated `ConfigLoader` with `load()` (cache-aware), `loadFromDisk()` (bypass cache), `clearCache()`, and `cacheKey()` methods
+- Uses Laravel Cache facade with `dispatch:config:{md5(path)}` cache keys
+- Config is cached only when `cache.config: true` in dispatch.yml
+- Updated `ConfigSyncer` to invalidate cache on import/export and sync `cache_config` to DB
+- `buildConfigFromDatabase()` now reads actual `cache_config` from project instead of hardcoding false
+- Created `dispatch:clear-cache {repo?}` Artisan command to clear cache for one or all projects
+- 14 tests covering: caching enabled/disabled, cached returns, cache clearing, cache key consistency, import/export invalidation, command behavior, DB sync, round-trip export
+- Files changed:
+  - database/migrations/2026_03_16_092257_add_cache_config_to_projects_table.php (new)
+  - app/Models/Project.php (modified — added cache_config to fillable/casts)
+  - app/Services/ConfigLoader.php (modified — added caching layer)
+  - app/Services/ConfigSyncer.php (modified — cache invalidation + cache_config sync)
+  - app/Console/Commands/ClearCacheCommand.php (new)
+  - tests/Feature/ConfigCachingTest.php (new)
+- **Learnings for future iterations:**
+  - Pest global functions defined at file level can conflict across test files — use unique function names per test file (e.g., `writeCacheConfig` vs `writeConfig`)
+  - `ConfigLoader::load()` now has two behaviors: cache-aware (default) and `loadFromDisk()` for bypassing cache — use `loadFromDisk()` in import operations
+  - Cache keys use md5 of normalized path (trailing slash stripped) for consistency
+  - The `cache.config` field was already parsed by ConfigLoader and stored in DispatchConfig DTO — just needed the caching logic and DB persistence
 ---
