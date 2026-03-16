@@ -10,7 +10,7 @@ describe('dispatch:add-project', function () {
         $path = base_path();
 
         $this->artisan('dispatch:add-project', ['repo' => 'owner/repo', 'path' => $path])
-            ->expectsOutput("Project 'owner/repo' added successfully.")
+            ->expectsOutputToContain("Project 'owner/repo' added with")
             ->assertSuccessful();
 
         $this->assertDatabaseHas('projects', [

@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Project;
+use App\Services\DefaultRulesService;
 use Illuminate\Console\Command;
 
 class AddProjectCommand extends Command
@@ -28,12 +29,14 @@ class AddProjectCommand extends Command
             return self::FAILURE;
         }
 
-        Project::create([
+        $project = Project::create([
             'repo' => $repo,
             'path' => $path,
         ]);
 
-        $this->info("Project '{$repo}' added successfully.");
+        $created = app(DefaultRulesService::class)->seed($project);
+
+        $this->info("Project '{$repo}' added with {$created} default rules.");
 
         return self::SUCCESS;
     }

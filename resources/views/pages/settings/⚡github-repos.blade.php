@@ -2,6 +2,7 @@
 
 use App\Models\GitHubInstallation;
 use App\Models\Project;
+use App\Services\DefaultRulesService;
 use App\Services\GitHubAppService;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
@@ -93,11 +94,13 @@ new #[Title('Browse Repositories')] class extends Component {
             return;
         }
 
-        Project::create([
+        $project = Project::create([
             'repo' => $this->registerRepo,
             'path' => $this->registerPath,
             'github_installation_id' => $this->installation->id,
         ]);
+
+        app(DefaultRulesService::class)->seed($project);
 
         $this->reset('showRegisterModal', 'registerRepo', 'registerPath');
         unset($this->registeredRepos);

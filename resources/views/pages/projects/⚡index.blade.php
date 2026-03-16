@@ -2,6 +2,7 @@
 
 use App\Models\Project;
 use App\Services\ConfigSyncer;
+use App\Services\DefaultRulesService;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Livewire\Attributes\Title;
@@ -125,10 +126,12 @@ new #[Title('Projects')] class extends Component {
             return;
         }
 
-        Project::create([
+        $project = Project::create([
             'repo' => $this->newRepo,
             'path' => $this->newPath,
         ]);
+
+        app(DefaultRulesService::class)->seed($project);
 
         $this->reset('newRepo', 'newPath', 'showAddForm');
         $this->dispatch('project-added');
