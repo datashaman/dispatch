@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Exceptions\RuleMatchingException;
+use App\Models\Project;
 use App\Models\WebhookLog;
 use App\Services\AgentDispatcher;
+use App\Services\ConfigLoader;
 use App\Services\PromptRenderer;
 use App\Services\RuleMatchingEngine;
 use Illuminate\Http\JsonResponse;
@@ -16,6 +18,7 @@ class WebhookController extends Controller
         protected RuleMatchingEngine $engine,
         protected AgentDispatcher $dispatcher,
         protected PromptRenderer $promptRenderer,
+        protected ConfigLoader $configLoader,
     ) {}
 
     public function handle(Request $request): JsonResponse
@@ -106,15 +109,15 @@ class WebhookController extends Controller
         }
 
         $webhookLog->update([
-            'matched_rules' => $matchedRules->pluck('rule_id')->toArray(),
+            'matched_rules' => $matchedRules->pluck('id')->toArray(),
             'status' => 'processed',
         ]);
 
         if ($request->boolean('dry-run')) {
             $results = $matchedRules->map(fn ($rule) => [
-                'rule' => $rule->rule_id,
+                'rule' => $rule->id,
                 'name' => $rule->name,
-                'prompt' => $this->promptRenderer->render($rule->prompt ?? '', $request->all()),
+                'prompt' => $this->promptRenderer->render($rule->prompt, $request->all()),
             ])->values()->toArray();
 
             return response()->json([
@@ -127,7 +130,11 @@ class WebhookController extends Controller
             ]);
         }
 
-        $results = $this->dispatcher->dispatch($webhookLog, $matchedRules, $request->all());
+        // Load project and config for the dispatcher
+        $project = Project::where('repo', $repo)->firstOrFail();
+        $config = $this->configLoader->load($project->path);
+
+        $results = $this->dispatcher->dispatch($webhookLog, $matchedRules, $request->all(), $project, $config);
 
         return response()->json([
             'ok' => true,

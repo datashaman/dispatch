@@ -1,14 +1,41 @@
 <?php
 
 use App\Models\Project;
-use App\Models\Rule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Symfony\Component\Yaml\Yaml;
 
 uses(RefreshDatabase::class);
 
 beforeEach(function () {
     config(['services.github.verify_webhook_signature' => false]);
+
+    $this->tempDir = sys_get_temp_dir().'/dispatch-dryrun-test-'.uniqid();
+    mkdir($this->tempDir);
 });
+
+afterEach(function () {
+    $configFile = $this->tempDir.'/dispatch.yml';
+    if (file_exists($configFile)) {
+        unlink($configFile);
+    }
+    if (is_dir($this->tempDir)) {
+        rmdir($this->tempDir);
+    }
+});
+
+function writeDryRunYaml(string $dir, array $rules): void
+{
+    $config = [
+        'version' => 1,
+        'agent' => [
+            'name' => 'test',
+            'executor' => 'laravel-ai',
+        ],
+        'rules' => $rules,
+    ];
+
+    file_put_contents($dir.'/dispatch.yml', Yaml::dump($config, 10, 2));
+}
 
 function dryRunPayload(array $overrides = []): array
 {
@@ -34,14 +61,15 @@ function dryRunPayload(array $overrides = []): array
 }
 
 it('returns matched rules with rendered prompts in dry-run mode', function (): void {
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-    Rule::factory()->create([
-        'project_id' => $project->id,
-        'rule_id' => 'analyze',
-        'name' => 'Analyze Issue',
-        'event' => 'issues.labeled',
-        'prompt' => 'Analyze issue #{{ event.issue.number }}: {{ event.issue.title }}',
+    writeDryRunYaml($this->tempDir, [
+        [
+            'id' => 'analyze',
+            'name' => 'Analyze Issue',
+            'event' => 'issues.labeled',
+            'prompt' => 'Analyze issue #{{ event.issue.number }}: {{ event.issue.title }}',
+        ],
     ]);
+    Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $response = $this->postJson('/api/webhook?dry-run=true', dryRunPayload(), [
         'X-GitHub-Event' => 'issues',
@@ -64,13 +92,14 @@ it('returns matched rules with rendered prompts in dry-run mode', function (): v
 });
 
 it('does not dispatch jobs in dry-run mode', function (): void {
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-    Rule::factory()->create([
-        'project_id' => $project->id,
-        'rule_id' => 'analyze',
-        'event' => 'issues.labeled',
-        'prompt' => 'Do something',
+    writeDryRunYaml($this->tempDir, [
+        [
+            'id' => 'analyze',
+            'event' => 'issues.labeled',
+            'prompt' => 'Do something',
+        ],
     ]);
+    Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $response = $this->postJson('/api/webhook?dry-run=true', dryRunPayload(), [
         'X-GitHub-Event' => 'issues',
@@ -83,7 +112,10 @@ it('does not dispatch jobs in dry-run mode', function (): void {
 });
 
 it('returns empty results when no rules match in dry-run mode', function (): void {
-    Project::factory()->create(['repo' => 'owner/repo']);
+    writeDryRunYaml($this->tempDir, [
+        ['id' => 'push-only', 'event' => 'push', 'prompt' => 'Push only'],
+    ]);
+    Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $response = $this->postJson('/api/webhook?dry-run=true', dryRunPayload(), [
         'X-GitHub-Event' => 'issues',
@@ -100,25 +132,23 @@ it('returns empty results when no rules match in dry-run mode', function (): voi
 });
 
 it('returns multiple matched rules in dry-run mode', function (): void {
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-
-    Rule::factory()->create([
-        'project_id' => $project->id,
-        'rule_id' => 'first',
-        'name' => 'First Rule',
-        'event' => 'issues.labeled',
-        'prompt' => 'First: {{ event.issue.title }}',
-        'sort_order' => 1,
+    writeDryRunYaml($this->tempDir, [
+        [
+            'id' => 'first',
+            'name' => 'First Rule',
+            'event' => 'issues.labeled',
+            'prompt' => 'First: {{ event.issue.title }}',
+            'sort_order' => 1,
+        ],
+        [
+            'id' => 'second',
+            'name' => 'Second Rule',
+            'event' => 'issues.labeled',
+            'prompt' => 'Second: {{ event.label.name }}',
+            'sort_order' => 2,
+        ],
     ]);
-
-    Rule::factory()->create([
-        'project_id' => $project->id,
-        'rule_id' => 'second',
-        'name' => 'Second Rule',
-        'event' => 'issues.labeled',
-        'prompt' => 'Second: {{ event.label.name }}',
-        'sort_order' => 2,
-    ]);
+    Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $response = $this->postJson('/api/webhook?dry-run=true', dryRunPayload(), [
         'X-GitHub-Event' => 'issues',
@@ -145,7 +175,10 @@ it('returns multiple matched rules in dry-run mode', function (): void {
 });
 
 it('still logs the webhook in dry-run mode', function (): void {
-    Project::factory()->create(['repo' => 'owner/repo']);
+    writeDryRunYaml($this->tempDir, [
+        ['id' => 'push-only', 'event' => 'push', 'prompt' => 'Push only'],
+    ]);
+    Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $this->postJson('/api/webhook?dry-run=true', dryRunPayload(), [
         'X-GitHub-Event' => 'issues',
@@ -159,13 +192,14 @@ it('still logs the webhook in dry-run mode', function (): void {
 });
 
 it('processes normally without dry-run parameter', function (): void {
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-    Rule::factory()->create([
-        'project_id' => $project->id,
-        'rule_id' => 'analyze',
-        'event' => 'issues.labeled',
-        'prompt' => 'Do something',
+    writeDryRunYaml($this->tempDir, [
+        [
+            'id' => 'analyze',
+            'event' => 'issues.labeled',
+            'prompt' => 'Do something',
+        ],
     ]);
+    Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $response = $this->postJson('/api/webhook', dryRunPayload(), [
         'X-GitHub-Event' => 'issues',
@@ -176,14 +210,15 @@ it('processes normally without dry-run parameter', function (): void {
 });
 
 it('renders prompts with nested payload paths in dry-run mode', function (): void {
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-    Rule::factory()->create([
-        'project_id' => $project->id,
-        'rule_id' => 'analyze',
-        'name' => 'Analyze',
-        'event' => 'issues.labeled',
-        'prompt' => 'User {{ event.issue.user.login }} filed issue #{{ event.issue.number }}',
+    writeDryRunYaml($this->tempDir, [
+        [
+            'id' => 'analyze',
+            'name' => 'Analyze',
+            'event' => 'issues.labeled',
+            'prompt' => 'User {{ event.issue.user.login }} filed issue #{{ event.issue.number }}',
+        ],
     ]);
+    Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $response = $this->postJson('/api/webhook?dry-run=true', dryRunPayload(), [
         'X-GitHub-Event' => 'issues',

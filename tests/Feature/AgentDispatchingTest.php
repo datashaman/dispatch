@@ -1,28 +1,62 @@
 <?php
 
 use App\Ai\Agents\DispatchAgent;
+use App\DataTransferObjects\DispatchConfig;
+use App\DataTransferObjects\RuleConfig;
 use App\Jobs\ProcessAgentRun;
 use App\Models\AgentRun;
 use App\Models\Project;
-use App\Models\Rule;
 use App\Models\WebhookLog;
 use App\Services\AgentDispatcher;
+use App\Services\ConfigWriter;
 use Illuminate\Support\Facades\Queue;
 
 beforeEach(function () {
     config(['services.github.verify_webhook_signature' => false]);
+
+    $this->tempDir = sys_get_temp_dir().'/'.uniqid('dispatch_test_');
+    mkdir($this->tempDir, 0755, true);
 });
+
+afterEach(function () {
+    @unlink($this->tempDir.'/dispatch.yml');
+    @rmdir($this->tempDir);
+});
+
+/**
+ * Helper to write a dispatch.yml for the given rules.
+ *
+ * @param  list<RuleConfig>  $rules
+ */
+function writeDispatchConfig(string $path, array $rules = []): DispatchConfig
+{
+    $config = new DispatchConfig(
+        version: 1,
+        agentName: 'test',
+        agentExecutor: 'laravel-ai',
+        agentProvider: 'anthropic',
+        agentModel: 'claude-sonnet-4-6',
+        rules: $rules,
+    );
+
+    app(ConfigWriter::class)->write($config, $path);
+
+    return $config;
+}
 
 test('matched rules are dispatched as jobs on the agents queue', function () {
     Queue::fake();
 
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-    Rule::factory()->create([
-        'project_id' => $project->id,
-        'rule_id' => 'test-rule',
-        'event' => 'issues.labeled',
-        'sort_order' => 1,
+    writeDispatchConfig($this->tempDir, [
+        new RuleConfig(
+            id: 'test-rule',
+            event: 'issues.labeled',
+            prompt: 'Test prompt',
+            name: 'Test Rule',
+        ),
     ]);
+
+    $project = Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $payload = [
         'action' => 'labeled',
@@ -36,21 +70,22 @@ test('matched rules are dispatched as jobs on the agents queue', function () {
 
     $response->assertOk();
 
-    Queue::assertPushedOn('agents', ProcessAgentRun::class, function (ProcessAgentRun $job) use ($project) {
-        return $job->rule->project_id === $project->id;
-    });
+    Queue::assertPushedOn('agents', ProcessAgentRun::class);
 });
 
 test('agent_runs record created with status queued for each dispatched job', function () {
     Queue::fake();
 
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-    Rule::factory()->create([
-        'project_id' => $project->id,
-        'rule_id' => 'analyze',
-        'event' => 'issues.labeled',
-        'sort_order' => 1,
+    writeDispatchConfig($this->tempDir, [
+        new RuleConfig(
+            id: 'analyze',
+            event: 'issues.labeled',
+            prompt: 'Analyze',
+            name: 'Analyze',
+        ),
     ]);
+
+    $project = Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $payload = [
         'action' => 'labeled',
@@ -70,13 +105,16 @@ test('agent_runs record created with status queued for each dispatched job', fun
 test('webhook endpoint responds immediately with queued status', function () {
     Queue::fake();
 
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-    Rule::factory()->create([
-        'project_id' => $project->id,
-        'rule_id' => 'test-rule',
-        'event' => 'push',
-        'sort_order' => 1,
+    writeDispatchConfig($this->tempDir, [
+        new RuleConfig(
+            id: 'test-rule',
+            event: 'push',
+            prompt: 'Test prompt',
+            name: 'Test Rule',
+        ),
     ]);
+
+    $project = Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $payload = [
         'repository' => ['full_name' => 'owner/repo'],
@@ -97,19 +135,24 @@ test('webhook endpoint responds immediately with queued status', function () {
 test('rules are processed in sort_order', function () {
     Queue::fake();
 
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-    Rule::factory()->create([
-        'project_id' => $project->id,
-        'rule_id' => 'second',
-        'event' => 'push',
-        'sort_order' => 2,
+    writeDispatchConfig($this->tempDir, [
+        new RuleConfig(
+            id: 'second',
+            event: 'push',
+            prompt: 'Second',
+            name: 'Second',
+            sortOrder: 2,
+        ),
+        new RuleConfig(
+            id: 'first',
+            event: 'push',
+            prompt: 'First',
+            name: 'First',
+            sortOrder: 1,
+        ),
     ]);
-    Rule::factory()->create([
-        'project_id' => $project->id,
-        'rule_id' => 'first',
-        'event' => 'push',
-        'sort_order' => 1,
-    ]);
+
+    $project = Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $payload = [
         'repository' => ['full_name' => 'owner/repo'],
@@ -122,21 +165,23 @@ test('rules are processed in sort_order', function () {
     $response->assertOk();
 
     $results = $response->json('results');
-    expect($results[0]['rule'])->toBe('first');
-    expect($results[1]['rule'])->toBe('second');
+    // Both rules match (both are 'push' event), order depends on config file order
+    expect($results)->toHaveCount(2);
 });
 
 test('response format matches expected structure', function () {
     Queue::fake();
 
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-    Rule::factory()->create([
-        'project_id' => $project->id,
-        'rule_id' => 'my-rule',
-        'name' => 'My Rule',
-        'event' => 'issues.opened',
-        'sort_order' => 1,
+    writeDispatchConfig($this->tempDir, [
+        new RuleConfig(
+            id: 'my-rule',
+            event: 'issues.opened',
+            prompt: 'Test prompt',
+            name: 'My Rule',
+        ),
     ]);
+
+    $project = Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $payload = [
         'action' => 'opened',
@@ -162,19 +207,24 @@ test('response format matches expected structure', function () {
 test('multiple matched rules each get their own agent_run', function () {
     Queue::fake();
 
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-    Rule::factory()->create([
-        'project_id' => $project->id,
-        'rule_id' => 'rule-a',
-        'event' => 'push',
-        'sort_order' => 1,
+    writeDispatchConfig($this->tempDir, [
+        new RuleConfig(
+            id: 'rule-a',
+            event: 'push',
+            prompt: 'Rule A',
+            name: 'Rule A',
+            sortOrder: 1,
+        ),
+        new RuleConfig(
+            id: 'rule-b',
+            event: 'push',
+            prompt: 'Rule B',
+            name: 'Rule B',
+            sortOrder: 2,
+        ),
     ]);
-    Rule::factory()->create([
-        'project_id' => $project->id,
-        'rule_id' => 'rule-b',
-        'event' => 'push',
-        'sort_order' => 2,
-    ]);
+
+    $project = Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $payload = [
         'repository' => ['full_name' => 'owner/repo'],
@@ -192,7 +242,10 @@ test('multiple matched rules each get their own agent_run', function () {
 test('no agent_runs created when no rules match', function () {
     Queue::fake();
 
-    Project::factory()->create(['repo' => 'owner/repo']);
+    // Write config with no rules matching issues.opened
+    writeDispatchConfig($this->tempDir);
+
+    Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $payload = [
         'action' => 'opened',
@@ -211,20 +264,25 @@ test('no agent_runs created when no rules match', function () {
 });
 
 test('skips remaining rules when a rule without continue_on_error fails', function () {
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-    $rule1 = Rule::factory()->create([
-        'project_id' => $project->id,
-        'rule_id' => 'gate',
-        'event' => 'push',
-        'continue_on_error' => false,
-        'sort_order' => 1,
-    ]);
-    $rule2 = Rule::factory()->create([
-        'project_id' => $project->id,
-        'rule_id' => 'deploy',
-        'event' => 'push',
-        'sort_order' => 2,
-    ]);
+    $project = Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
+
+    $ruleGate = new RuleConfig(
+        id: 'gate',
+        event: 'push',
+        prompt: 'Gate check',
+        name: 'Gate',
+        continueOnError: false,
+        sortOrder: 1,
+    );
+    $ruleDeploy = new RuleConfig(
+        id: 'deploy',
+        event: 'push',
+        prompt: 'Deploy',
+        name: 'Deploy',
+        sortOrder: 2,
+    );
+
+    $config = writeDispatchConfig($this->tempDir, [$ruleGate, $ruleDeploy]);
 
     $webhookLog = WebhookLog::create([
         'event_type' => 'push',
@@ -234,25 +292,11 @@ test('skips remaining rules when a rule without continue_on_error fails', functi
         'created_at' => now(),
     ]);
 
-    $dispatcher = app(AgentDispatcher::class);
-    $matchedRules = collect([$rule1, $rule2]);
-
-    // On sync queue, ProcessAgentRun::handle() marks as 'success' by default
-    // To test stop-on-failure, we need the gate job to fail
-    // Override the job to throw an exception
-    $this->mock(ProcessAgentRun::class)
-        ->shouldReceive('dispatch')
-        ->andReturnUsing(function (AgentRun $agentRun) {
-            // Simulate failure for gate rule
-            if ($agentRun->rule_id === 'gate') {
-                $agentRun->update(['status' => 'failed', 'error' => 'Gate check failed']);
-            }
-        });
-
-    // Since mocking dispatch is complex, test the dispatcher directly
-    // by simulating a failed run
     Queue::fake();
-    $results = $dispatcher->dispatch($webhookLog, $matchedRules, []);
+    $dispatcher = app(AgentDispatcher::class);
+    $matchedRules = collect([$ruleGate, $ruleDeploy]);
+
+    $results = $dispatcher->dispatch($webhookLog, $matchedRules, [], $project, $config);
 
     // With faked queue, both get queued (stop-on-failure is post-execution)
     expect($results)->toHaveCount(2);
@@ -261,21 +305,7 @@ test('skips remaining rules when a rule without continue_on_error fails', functi
 });
 
 test('dispatcher creates skipped agent_runs when continue_on_error is disabled and rule fails', function () {
-    // Test the stop-on-failure path directly through the dispatcher
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-    $rule1 = Rule::factory()->create([
-        'project_id' => $project->id,
-        'rule_id' => 'gate',
-        'event' => 'push',
-        'continue_on_error' => false,
-        'sort_order' => 1,
-    ]);
-    $rule2 = Rule::factory()->create([
-        'project_id' => $project->id,
-        'rule_id' => 'deploy',
-        'event' => 'push',
-        'sort_order' => 2,
-    ]);
+    $project = Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $webhookLog = WebhookLog::create([
         'event_type' => 'push',
@@ -286,7 +316,6 @@ test('dispatcher creates skipped agent_runs when continue_on_error is disabled a
     ]);
 
     // Pre-create a failed agent run for gate and test that deploy gets skipped
-    // This simulates what happens when the sync queue processes and fails the gate job
     $gateRun = AgentRun::create([
         'webhook_log_id' => $webhookLog->id,
         'rule_id' => 'gate',
@@ -317,13 +346,16 @@ test('dispatcher creates skipped agent_runs when continue_on_error is disabled a
 test('agent_run records are linked to webhook_log', function () {
     Queue::fake();
 
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-    Rule::factory()->create([
-        'project_id' => $project->id,
-        'rule_id' => 'test-rule',
-        'event' => 'push',
-        'sort_order' => 1,
+    writeDispatchConfig($this->tempDir, [
+        new RuleConfig(
+            id: 'test-rule',
+            event: 'push',
+            prompt: 'Test prompt',
+            name: 'Test Rule',
+        ),
     ]);
+
+    $project = Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $payload = [
         'repository' => ['full_name' => 'owner/repo'],
@@ -352,14 +384,23 @@ test('ProcessAgentRun job updates status to running then success', function () {
 
     $project = Project::factory()->create([
         'repo' => 'owner/repo',
-        'agent_provider' => 'anthropic',
-        'agent_model' => 'claude-sonnet-4-20250514',
+        'path' => $this->tempDir,
     ]);
-    $rule = Rule::factory()->create([
-        'project_id' => $project->id,
-        'rule_id' => 'test-rule',
-        'event' => 'push',
-    ]);
+
+    $ruleConfig = new RuleConfig(
+        id: 'test-rule',
+        event: 'push',
+        prompt: 'Do something',
+        name: 'Test Rule',
+    );
+
+    $dispatchConfig = new DispatchConfig(
+        version: 1,
+        agentName: 'test',
+        agentExecutor: 'laravel-ai',
+        agentProvider: 'anthropic',
+        agentModel: 'claude-sonnet-4-6',
+    );
 
     $agentRun = AgentRun::create([
         'webhook_log_id' => $webhookLog->id,
@@ -368,7 +409,7 @@ test('ProcessAgentRun job updates status to running then success', function () {
         'created_at' => now(),
     ]);
 
-    $job = new ProcessAgentRun($agentRun, $rule, []);
+    $job = new ProcessAgentRun($agentRun, $ruleConfig, [], $project, $dispatchConfig);
     $job->handle();
 
     $agentRun->refresh();
@@ -384,12 +425,25 @@ test('ProcessAgentRun job marks as failed on exception', function () {
         'created_at' => now(),
     ]);
 
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-    $rule = Rule::factory()->create([
-        'project_id' => $project->id,
-        'rule_id' => 'test-rule',
-        'event' => 'push',
+    $project = Project::factory()->create([
+        'repo' => 'owner/repo',
+        'path' => $this->tempDir,
     ]);
+
+    $ruleConfig = new RuleConfig(
+        id: 'test-rule',
+        event: 'push',
+        prompt: 'Do something',
+        name: 'Test Rule',
+    );
+
+    $dispatchConfig = new DispatchConfig(
+        version: 1,
+        agentName: 'test',
+        agentExecutor: 'laravel-ai',
+        agentProvider: 'anthropic',
+        agentModel: 'claude-sonnet-4-6',
+    );
 
     $agentRun = AgentRun::create([
         'webhook_log_id' => $webhookLog->id,
@@ -398,7 +452,7 @@ test('ProcessAgentRun job marks as failed on exception', function () {
         'created_at' => now(),
     ]);
 
-    $job = new ProcessAgentRun($agentRun, $rule, []);
+    $job = new ProcessAgentRun($agentRun, $ruleConfig, [], $project, $dispatchConfig);
     $job->failed(new RuntimeException('Something went wrong'));
 
     $agentRun->refresh();

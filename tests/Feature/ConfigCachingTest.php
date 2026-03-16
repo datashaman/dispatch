@@ -167,29 +167,6 @@ it('invalidates cache on import', function () {
     expect(Cache::get($cacheKey))->toBeNull();
 });
 
-it('invalidates cache on export', function () {
-    writeCacheConfig($this->tempDir, cachingYaml(true));
-
-    $project = Project::factory()->create([
-        'repo' => 'test/cache-export',
-        'path' => $this->tempDir,
-        'agent_name' => 'sparky',
-        'agent_executor' => 'laravel-ai',
-        'cache_config' => true,
-    ]);
-
-    // Load config to populate cache
-    $this->loader->load($this->tempDir);
-    $cacheKey = ConfigLoader::cacheKey($this->tempDir);
-    expect(Cache::get($cacheKey))->not->toBeNull();
-
-    // Export should clear cache
-    $syncer = app(ConfigSyncer::class);
-    $syncer->export($project);
-
-    expect(Cache::get($cacheKey))->toBeNull();
-});
-
 it('dispatch:clear-cache clears cache for a specific repo', function () {
     writeCacheConfig($this->tempDir, cachingYaml(true));
 
@@ -254,23 +231,4 @@ it('syncs cache_config to database on import', function () {
 
     $project->refresh();
     expect($project->cache_config)->toBeTrue();
-});
-
-it('exports cache_config from database', function () {
-    $project = Project::factory()->create([
-        'repo' => 'test/cache-export-db',
-        'path' => $this->tempDir,
-        'agent_name' => 'sparky',
-        'agent_executor' => 'laravel-ai',
-        'cache_config' => true,
-    ]);
-
-    $syncer = app(ConfigSyncer::class);
-    $config = $syncer->export($project);
-
-    expect($config->cacheConfig)->toBeTrue();
-
-    $yamlContent = file_get_contents($this->tempDir.'/dispatch.yml');
-    expect($yamlContent)->toContain('cache:');
-    expect($yamlContent)->toContain('config: true');
 });

@@ -11,7 +11,7 @@ class ImportConfigCommand extends Command
 {
     protected $signature = 'dispatch:import {repo}';
 
-    protected $description = 'Import dispatch.yml into the database for a project';
+    protected $description = 'Sync project agent settings from dispatch.yml';
 
     public function handle(ConfigSyncer $syncer): int
     {
@@ -34,7 +34,7 @@ class ImportConfigCommand extends Command
         }
 
         $ruleCount = count($config->rules);
-        $this->info("Imported {$ruleCount} rule(s) from dispatch.yml for '{$repo}'.");
+        $this->info("Synced agent config ({$ruleCount} rules found) from dispatch.yml for '{$repo}'.");
 
         return self::SUCCESS;
     }

@@ -2,8 +2,8 @@
 
 namespace App\Services;
 
+use App\DataTransferObjects\OutputConfig;
 use App\Models\AgentRun;
-use App\Models\Rule;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
 
@@ -14,18 +14,11 @@ class OutputHandler
      *
      * @param  array<string, mixed>  $payload
      */
-    public function handle(AgentRun $agentRun, Rule $rule, array $payload): void
+    public function handle(AgentRun $agentRun, OutputConfig $outputConfig, array $payload): void
     {
-        $outputConfig = $rule->outputConfig;
-
-        // log: true is the default — output is already saved to agent_runs.output
-        // by the ProcessAgentRun job, so nothing to do here for logging.
-
-        if ($outputConfig?->github_comment) {
+        if ($outputConfig->githubComment) {
             $this->postGitHubComment($agentRun, $payload);
         }
-
-        // Reactions are added upfront by ProcessAgentRun when the job starts
     }
 
     /**
@@ -129,7 +122,6 @@ class OutputHandler
      */
     public function resolveGitHubResource(array $payload): ?array
     {
-        // Pull request (includes PR review comments)
         if (isset($payload['pull_request']['number'])) {
             return [
                 'type' => 'issues',
@@ -137,7 +129,6 @@ class OutputHandler
             ];
         }
 
-        // Issue
         if (isset($payload['issue']['number'])) {
             return [
                 'type' => 'issues',
@@ -145,7 +136,6 @@ class OutputHandler
             ];
         }
 
-        // Discussion
         if (isset($payload['discussion']['number'])) {
             return [
                 'type' => 'discussions',

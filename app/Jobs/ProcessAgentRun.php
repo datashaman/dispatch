@@ -3,10 +3,13 @@
 namespace App\Jobs;
 
 use App\Contracts\Executor;
+use App\DataTransferObjects\DispatchConfig;
+use App\DataTransferObjects\OutputConfig;
+use App\DataTransferObjects\RuleConfig;
 use App\Executors\ClaudeCliExecutor;
 use App\Executors\LaravelAiExecutor;
 use App\Models\AgentRun;
-use App\Models\Rule;
+use App\Models\Project;
 use App\Services\ConversationMemory;
 use App\Services\OutputHandler;
 use App\Services\PromptRenderer;
@@ -28,8 +31,10 @@ class ProcessAgentRun implements ShouldQueue
      */
     public function __construct(
         public AgentRun $agentRun,
-        public Rule $rule,
-        public array $payload = [],
+        public RuleConfig $ruleConfig,
+        public array $payload,
+        public Project $project,
+        public DispatchConfig $dispatchConfig,
     ) {
         $this->onQueue('agents');
         $this->configureRetry();
@@ -47,17 +52,17 @@ class ProcessAgentRun implements ShouldQueue
         ]);
 
         // Add reaction immediately so the user knows the agent is working
-        $outputConfig = $this->rule->outputConfig;
-        if ($outputConfig?->github_reaction) {
+        $outputConfig = $this->ruleConfig->output ?? new OutputConfig;
+        if ($outputConfig->githubReaction) {
             app(OutputHandler::class)->addReaction(
-                $outputConfig->github_reaction,
+                $outputConfig->githubReaction,
                 $this->payload,
             );
         }
 
         $executor = $this->resolveExecutor();
         $renderedPrompt = app(PromptRenderer::class)->render(
-            $this->rule->prompt ?? '',
+            $this->ruleConfig->prompt,
             $this->payload,
         );
         $agentConfig = $this->resolveAgentConfig();
@@ -86,7 +91,7 @@ class ProcessAgentRun implements ShouldQueue
             if ($result->status === 'success') {
                 app(OutputHandler::class)->handle(
                     $this->agentRun,
-                    $this->rule,
+                    $outputConfig,
                     $this->payload,
                 );
             } elseif ($result->status === 'failed' && $this->shouldRetry()) {
@@ -116,10 +121,10 @@ class ProcessAgentRun implements ShouldQueue
      */
     protected function configureRetry(): void
     {
-        $retryConfig = $this->rule->retryConfig;
+        $retryConfig = $this->ruleConfig->retry;
 
         if ($retryConfig && $retryConfig->enabled) {
-            $this->tries = $retryConfig->max_attempts;
+            $this->tries = $retryConfig->maxAttempts;
             $this->backoff = $retryConfig->delay;
         }
     }
@@ -150,12 +155,11 @@ class ProcessAgentRun implements ShouldQueue
     }
 
     /**
-     * Resolve the executor based on the project's agent_executor setting.
+     * Resolve the executor based on the dispatch config.
      */
     protected function resolveExecutor(): Executor
     {
-        $project = $this->rule->project;
-        $executor = $project?->agent_executor ?? 'laravel-ai';
+        $executor = $this->dispatchConfig->agentExecutor;
 
         return match ($executor) {
             'claude-cli' => app(ClaudeCliExecutor::class),
@@ -165,27 +169,27 @@ class ProcessAgentRun implements ShouldQueue
     }
 
     /**
-     * Resolve agent config by merging rule-level config with project-level fallbacks.
+     * Resolve agent config by merging rule-level config with dispatch-level defaults.
      *
      * @return array<string, mixed>
      */
     protected function resolveAgentConfig(): array
     {
-        $project = $this->rule->project;
-        $ruleConfig = $this->rule->agentConfig;
+        $agent = $this->ruleConfig->agent;
+        $output = $this->ruleConfig->output;
 
         return [
-            'provider' => $ruleConfig?->provider ?? $project?->agent_provider,
-            'model' => $ruleConfig?->model ?? $project?->agent_model,
-            'max_tokens' => $ruleConfig?->max_tokens,
-            'max_steps' => $ruleConfig?->max_steps,
-            'tools' => $ruleConfig?->tools ?? [],
-            'disallowed_tools' => $ruleConfig?->disallowed_tools ?? [],
-            'isolation' => $ruleConfig?->isolation ?? false,
-            'instructions_file' => $project?->agent_instructions_file,
-            'project_path' => $project?->path,
-            'output_github_comment' => $this->rule->outputConfig?->github_comment ?? false,
-            'output_github_reaction' => $this->rule->outputConfig?->github_reaction,
+            'provider' => $agent?->provider ?? $this->dispatchConfig->agentProvider,
+            'model' => $agent?->model ?? $this->dispatchConfig->agentModel,
+            'max_tokens' => $agent?->maxTokens,
+            'max_steps' => $agent?->maxSteps,
+            'tools' => $agent?->tools ?? [],
+            'disallowed_tools' => $agent?->disallowedTools ?? [],
+            'isolation' => $agent?->isolation ?? false,
+            'instructions_file' => $this->dispatchConfig->agentInstructionsFile,
+            'project_path' => $this->project->path,
+            'output_github_comment' => $output?->githubComment ?? false,
+            'output_github_reaction' => $output?->githubReaction,
         ];
     }
 
@@ -199,7 +203,7 @@ class ProcessAgentRun implements ShouldQueue
     {
         $worktreeManager = app(WorktreeManager::class);
         $projectPath = $agentConfig['project_path'];
-        $ruleId = $this->rule->rule_id;
+        $ruleId = $this->ruleConfig->id;
 
         $worktree = $worktreeManager->create($projectPath, $ruleId);
 
@@ -220,7 +224,7 @@ class ProcessAgentRun implements ShouldQueue
     protected function cleanupWorktree(array $worktree, array $agentConfig): void
     {
         $worktreeManager = app(WorktreeManager::class);
-        $projectPath = $this->rule->project?->path ?? $agentConfig['project_path'];
+        $projectPath = $this->project->path ?? $agentConfig['project_path'];
 
         $removed = $worktreeManager->cleanup(
             $worktree['path'],
@@ -228,10 +232,12 @@ class ProcessAgentRun implements ShouldQueue
             $projectPath,
         );
 
+        $ruleId = $this->ruleConfig->id;
+
         if ($removed) {
-            Log::info("Cleaned up worktree for rule {$this->rule->rule_id} (no new commits)");
+            Log::info("Cleaned up worktree for rule {$ruleId} (no new commits)");
         } else {
-            Log::info("Retained worktree for rule {$this->rule->rule_id} (commits found)", [
+            Log::info("Retained worktree for rule {$ruleId} (commits found)", [
                 'path' => $worktree['path'],
                 'branch' => $worktree['branch'],
             ]);

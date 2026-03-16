@@ -1,11 +1,12 @@
 <?php
 
 use App\Ai\Agents\DispatchAgent;
+use App\DataTransferObjects\AgentConfig;
+use App\DataTransferObjects\DispatchConfig;
+use App\DataTransferObjects\RuleConfig;
 use App\Jobs\ProcessAgentRun;
 use App\Models\AgentRun;
 use App\Models\Project;
-use App\Models\Rule;
-use App\Models\RuleAgentConfig;
 use App\Models\WebhookLog;
 use App\Services\WorktreeManager;
 use Illuminate\Support\Facades\File;
@@ -104,24 +105,30 @@ test('ProcessAgentRun creates worktree when isolation is true', function () {
 
     $webhookLog = WebhookLog::factory()->create();
 
-    $rule = Rule::factory()->for($this->project)->create([
-        'rule_id' => 'isolated-rule',
-        'prompt' => 'Do something',
-    ]);
+    $dispatchConfig = new DispatchConfig(
+        version: 1,
+        agentName: 'test',
+        agentExecutor: 'laravel-ai',
+    );
 
-    RuleAgentConfig::factory()->for($rule)->create([
-        'isolation' => true,
-        'tools' => [],
-        'disallowed_tools' => [],
-    ]);
+    $ruleConfig = new RuleConfig(
+        id: 'isolated-rule',
+        event: 'push',
+        prompt: 'Do something',
+        agent: new AgentConfig(
+            isolation: true,
+            tools: [],
+            disallowedTools: [],
+        ),
+    );
 
     $agentRun = AgentRun::factory()->create([
         'webhook_log_id' => $webhookLog->id,
-        'rule_id' => $rule->rule_id,
+        'rule_id' => 'isolated-rule',
         'status' => 'queued',
     ]);
 
-    $job = new ProcessAgentRun($agentRun, $rule, ['action' => 'test']);
+    $job = new ProcessAgentRun($agentRun, $ruleConfig, ['action' => 'test'], $this->project, $dispatchConfig);
     $job->handle();
 
     $agentRun->refresh();
@@ -141,24 +148,30 @@ test('ProcessAgentRun does not create worktree when isolation is false', functio
 
     $webhookLog = WebhookLog::factory()->create();
 
-    $rule = Rule::factory()->for($this->project)->create([
-        'rule_id' => 'non-isolated-rule',
-        'prompt' => 'Do something',
-    ]);
+    $dispatchConfig = new DispatchConfig(
+        version: 1,
+        agentName: 'test',
+        agentExecutor: 'laravel-ai',
+    );
 
-    RuleAgentConfig::factory()->for($rule)->create([
-        'isolation' => false,
-        'tools' => [],
-        'disallowed_tools' => [],
-    ]);
+    $ruleConfig = new RuleConfig(
+        id: 'non-isolated-rule',
+        event: 'push',
+        prompt: 'Do something',
+        agent: new AgentConfig(
+            isolation: false,
+            tools: [],
+            disallowedTools: [],
+        ),
+    );
 
     $agentRun = AgentRun::factory()->create([
         'webhook_log_id' => $webhookLog->id,
-        'rule_id' => $rule->rule_id,
+        'rule_id' => 'non-isolated-rule',
         'status' => 'queued',
     ]);
 
-    $job = new ProcessAgentRun($agentRun, $rule, ['action' => 'test']);
+    $job = new ProcessAgentRun($agentRun, $ruleConfig, ['action' => 'test'], $this->project, $dispatchConfig);
     $job->handle();
 
     $agentRun->refresh();

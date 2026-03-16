@@ -1,13 +1,10 @@
 <?php
 
 use App\DataTransferObjects\DispatchConfig;
-use App\Enums\FilterOperator;
-use App\Models\Filter;
 use App\Models\Project;
-use App\Models\Rule;
-use App\Models\RuleAgentConfig;
 use App\Models\User;
 use App\Services\ConfigSyncer;
+use Illuminate\Support\Facades\File;
 use Livewire\Volt\Volt;
 
 beforeEach(function () {
@@ -56,7 +53,7 @@ test('can add a new project', function () {
         expect(Project::where('repo', 'owner/new-repo')->exists())->toBeTrue();
         expect(Project::where('repo', 'owner/new-repo')->first()->path)->toBe($path);
     } finally {
-        rmdir($path);
+        File::deleteDirectory($path);
     }
 });
 
@@ -112,21 +109,6 @@ test('can import config for a project', function () {
         ->call('importConfig', $project->id);
 });
 
-test('can export config for a project', function () {
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-    $dummyConfig = new DispatchConfig(version: 1, agentName: 'test', agentExecutor: 'laravel-ai');
-
-    $mock = Mockery::mock(ConfigSyncer::class);
-    $mock->shouldReceive('export')
-        ->once()
-        ->with(Mockery::on(fn ($p) => $p->id === $project->id))
-        ->andReturn($dummyConfig);
-    app()->instance(ConfigSyncer::class, $mock);
-
-    Volt::test('pages::projects.index')
-        ->call('exportConfig', $project->id);
-});
-
 test('shows error when import fails', function () {
     $project = Project::factory()->create(['repo' => 'owner/repo']);
 
@@ -173,7 +155,7 @@ test('can edit a project', function () {
         expect($project->agent_instructions_file)->toBe('SPARKY.md');
         expect($project->cache_config)->toBeTrue();
     } finally {
-        rmdir($path);
+        File::deleteDirectory($path);
     }
 });
 
@@ -193,7 +175,7 @@ test('validates path exists on disk when editing', function () {
             ->call('updateProject')
             ->assertHasErrors('editPath');
     } finally {
-        rmdir($path);
+        File::deleteDirectory($path);
     }
 });
 
@@ -212,7 +194,7 @@ test('validates repo uniqueness when editing', function () {
             ->call('updateProject')
             ->assertHasErrors('editRepo');
     } finally {
-        rmdir($path);
+        File::deleteDirectory($path);
     }
 });
 
@@ -239,50 +221,7 @@ test('project show page displays project details', function () {
         ->assertSee('Enabled');
 });
 
-test('project show page displays rules overview', function () {
-    $project = Project::factory()->create(['repo' => 'owner/with-rules']);
-    $rule = Rule::factory()->create([
-        'project_id' => $project->id,
-        'rule_id' => 'analyze',
-        'name' => 'Analyze Issue',
-        'event' => 'issues.labeled',
-    ]);
-    RuleAgentConfig::factory()->create([
-        'rule_id' => $rule->id,
-        'tools' => ['read', 'glob', 'grep'],
-        'isolation' => false,
-    ]);
-    Filter::factory()->create([
-        'rule_id' => $rule->id,
-        'field' => 'event.label.name',
-        'operator' => FilterOperator::Equals,
-        'value' => 'sparky',
-    ]);
-
-    Volt::test('pages::projects.show', ['project' => $project->id])
-        ->assertSee('Analyze Issue')
-        ->assertSee('analyze')
-        ->assertSee('issues.labeled')
-        ->assertSee('read')
-        ->assertSee('glob')
-        ->assertSee('grep');
-});
-
 test('project show page handles missing project', function () {
     Volt::test('pages::projects.show', ['project' => 99999])
         ->assertSee('Project not found');
-});
-
-test('shows error when export fails', function () {
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-
-    $mock = Mockery::mock(ConfigSyncer::class);
-    $mock->shouldReceive('export')
-        ->once()
-        ->andThrow(new RuntimeException('Write permission denied'));
-    app()->instance(ConfigSyncer::class, $mock);
-
-    Volt::test('pages::projects.index')
-        ->call('exportConfig', $project->id)
-        ->assertSet('errorMessage', 'Export failed: Write permission denied');
 });
