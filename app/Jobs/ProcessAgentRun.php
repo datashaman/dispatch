@@ -46,6 +46,15 @@ class ProcessAgentRun implements ShouldQueue
             'attempt' => $attempt,
         ]);
 
+        // Add reaction immediately so the user knows the agent is working
+        $outputConfig = $this->rule->outputConfig;
+        if ($outputConfig?->github_reaction) {
+            app(OutputHandler::class)->addReaction(
+                $outputConfig->github_reaction,
+                $this->payload,
+            );
+        }
+
         $executor = $this->resolveExecutor();
         $renderedPrompt = app(PromptRenderer::class)->render(
             $this->rule->prompt ?? '',
@@ -175,6 +184,8 @@ class ProcessAgentRun implements ShouldQueue
             'isolation' => $ruleConfig?->isolation ?? false,
             'instructions_file' => $project?->agent_instructions_file,
             'project_path' => $project?->path,
+            'output_github_comment' => $this->rule->outputConfig?->github_comment ?? false,
+            'output_github_reaction' => $this->rule->outputConfig?->github_reaction,
         ];
     }
 

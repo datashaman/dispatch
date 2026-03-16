@@ -241,6 +241,12 @@ it('exchanges a manifest code for credentials', function (): void {
 it('handles the manifest callback and stores credentials', function (): void {
     $user = User::factory()->create();
 
+    $tempEnv = tempnam(sys_get_temp_dir(), 'env_');
+    copy(base_path('.env'), $tempEnv);
+
+    // Bind a service instance that writes to temp env instead of real .env
+    app()->singleton(GitHubAppService::class, fn () => (new GitHubAppService)->useEnvPath($tempEnv));
+
     Http::fake([
         'api.github.com/app-manifests/abc123/conversions' => Http::response([
             'id' => 99999,
@@ -264,6 +270,8 @@ it('handles the manifest callback and stores credentials', function (): void {
     // Verify config was updated
     expect(config('services.github.app_id'))->toBe(99999);
     expect(config('services.github.webhook_secret'))->toBe('wh_secret_test');
+
+    unlink($tempEnv);
 });
 
 it('redirects with error when manifest callback has no code', function (): void {
@@ -304,7 +312,10 @@ it('deletes the app on GitHub and clears local credentials', function (): void {
         'api.github.com/app' => Http::response(null, 204),
     ]);
 
-    $service = app(GitHubAppService::class);
+    $tempEnv = tempnam(sys_get_temp_dir(), 'env_');
+    copy(base_path('.env'), $tempEnv);
+
+    $service = app(GitHubAppService::class)->useEnvPath($tempEnv);
     $service->deleteApp();
 
     expect(config('services.github.app_id'))->toBeNull();
@@ -312,6 +323,7 @@ it('deletes the app on GitHub and clears local credentials', function (): void {
     expect(GitHubInstallation::count())->toBe(0);
 
     unlink($keyPath);
+    unlink($tempEnv);
 });
 
 it('clears credentials without deleting on GitHub', function (): void {
@@ -320,12 +332,17 @@ it('clears credentials without deleting on GitHub', function (): void {
 
     GitHubInstallation::factory()->create();
 
-    Http::fake(); // should not make any HTTP calls
+    Http::fake();
 
-    $service = app(GitHubAppService::class);
+    $tempEnv = tempnam(sys_get_temp_dir(), 'env_');
+    copy(base_path('.env'), $tempEnv);
+
+    $service = app(GitHubAppService::class)->useEnvPath($tempEnv);
     $service->clearCredentials();
 
     expect(config('services.github.app_id'))->toBeNull();
     expect(GitHubInstallation::count())->toBe(0);
     Http::assertNothingSent();
+
+    unlink($tempEnv);
 });

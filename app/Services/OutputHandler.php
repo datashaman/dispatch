@@ -25,9 +25,7 @@ class OutputHandler
             $this->postGitHubComment($agentRun, $payload);
         }
 
-        if ($outputConfig?->github_reaction) {
-            $this->addGitHubReaction($outputConfig->github_reaction, $payload);
-        }
+        // Reactions are added upfront by ProcessAgentRun when the job starts
     }
 
     /**
@@ -59,12 +57,21 @@ class OutputHandler
 
         $output = $agentRun->output ?? '';
 
-        $result = Process::run([
-            'gh', 'api',
-            '-X', 'POST',
-            "/repos/{$repo}/{$resource['type']}/{$resource['number']}/comments",
-            '-f', "body={$output}",
-        ]);
+        if (empty(trim($output))) {
+            Log::warning('Skipping GitHub comment — agent produced no output', [
+                'agent_run_id' => $agentRun->id,
+            ]);
+
+            return;
+        }
+
+        $result = Process::input(json_encode(['body' => $output]))
+            ->run([
+                'gh', 'api',
+                '-X', 'POST',
+                "/repos/{$repo}/{$resource['type']}/{$resource['number']}/comments",
+                '--input', '-',
+            ]);
 
         if (! $result->successful()) {
             Log::error('Failed to post GitHub comment', [
@@ -79,7 +86,7 @@ class OutputHandler
      *
      * @param  array<string, mixed>  $payload
      */
-    protected function addGitHubReaction(string $reaction, array $payload): void
+    public function addReaction(string $reaction, array $payload): void
     {
         $repo = $payload['repository']['full_name'] ?? null;
 

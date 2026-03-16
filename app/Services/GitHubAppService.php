@@ -6,6 +6,7 @@ use App\Models\GitHubInstallation;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class GitHubAppService
@@ -247,8 +248,13 @@ class GitHubAppService
      */
     public function storeCredentials(array $credentials): void
     {
-        $envPath = base_path('.env');
+        $envPath = $this->envPath();
         $env = file_get_contents($envPath);
+
+        Log::info('GitHubAppService::storeCredentials called', [
+            'app_id' => $credentials['id'],
+            'caller' => debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 5),
+        ]);
 
         $env = $this->setEnvValue($env, 'GITHUB_APP_ID', (string) $credentials['id']);
         $env = $this->setEnvValue($env, 'GITHUB_APP_PRIVATE_KEY', base64_encode($credentials['pem']));
@@ -271,6 +277,10 @@ class GitHubAppService
      */
     public function deleteApp(): void
     {
+        Log::warning('GitHubAppService::deleteApp called', [
+            'caller' => debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 5),
+        ]);
+
         // Delete the app on GitHub (DELETE /app, authenticated as the app via JWT)
         if ($this->isConfigured()) {
             $this->appRequest()->delete(self::API_BASE.'/app')->throw();
@@ -284,7 +294,11 @@ class GitHubAppService
      */
     public function clearCredentials(): void
     {
-        $envPath = base_path('.env');
+        Log::warning('GitHubAppService::clearCredentials called', [
+            'caller' => debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 5),
+        ]);
+
+        $envPath = $this->envPath();
         $env = file_get_contents($envPath);
 
         $env = $this->setEnvValue($env, 'GITHUB_APP_ID', '');
@@ -343,6 +357,26 @@ class GitHubAppService
 
         return implode("\n", $lines);
     }
+
+    /**
+     * Get the path to the .env file. Overridable for testing.
+     */
+    public function envPath(): string
+    {
+        return $this->envPath ?? base_path('.env');
+    }
+
+    /**
+     * Override the .env path (for testing).
+     */
+    public function useEnvPath(string $path): static
+    {
+        $this->envPath = $path;
+
+        return $this;
+    }
+
+    protected ?string $envPath = null;
 
     protected function appRequest(): PendingRequest
     {
