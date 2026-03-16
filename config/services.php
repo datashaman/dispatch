@@ -35,4 +35,9 @@ return [
         ],
     ],
 
+    'github' => [
+        'webhook_secret' => env('GITHUB_WEBHOOK_SECRET'),
+        'verify_webhook_signature' => env('VERIFY_WEBHOOK_SIGNATURE', true),
+    ],
+
 ];
