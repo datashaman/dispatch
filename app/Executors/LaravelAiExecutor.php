@@ -22,7 +22,7 @@ class LaravelAiExecutor implements Executor
         $startTime = hrtime(true);
 
         try {
-            $systemPrompt = $this->loadSystemPrompt($agentConfig);
+            $systemPrompt = $this->loadSystemPrompt($agentConfig).$this->buildOutputInstructions($agentConfig);
             $tools = $this->resolveTools($agentConfig);
 
             $agent = new DispatchAgent(
@@ -85,6 +85,28 @@ class LaravelAiExecutor implements Executor
         }
 
         return 'You are a helpful AI assistant.';
+    }
+
+    /**
+     * Build output routing instructions to append to the system prompt.
+     *
+     * @param  array<string, mixed>  $agentConfig
+     */
+    protected function buildOutputInstructions(array $agentConfig): string
+    {
+        $lines = [];
+
+        if ($agentConfig['output_github_comment'] ?? false) {
+            $lines[] = 'Your final text response will be posted as a GitHub comment automatically.';
+            $lines[] = 'Do NOT use `gh issue comment`, `gh pr comment`, or `gh api` to post comments — just write your response directly.';
+            $lines[] = 'Do not narrate what you did — output only the deliverable itself.';
+        }
+
+        if ($agentConfig['output_github_reaction'] ?? null) {
+            $lines[] = 'A "'.$agentConfig['output_github_reaction'].'" reaction will be added automatically. Do not add reactions yourself.';
+        }
+
+        return $lines ? "\n\n## Output Routing\n\n".implode("\n", $lines) : '';
     }
 
     /**

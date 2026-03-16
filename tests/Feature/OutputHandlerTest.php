@@ -59,7 +59,8 @@ test('github_comment posts comment on issue via gh CLI', function () {
             && $process->command[1] === 'api'
             && $process->command[3] === 'POST'
             && str_contains($process->command[4], '/repos/owner/repo/issues/42/comments')
-            && str_contains($process->command[6], 'Agent analysis complete.');
+            && in_array('--input', $process->command)
+            && in_array('-', $process->command);
     });
 });
 
@@ -103,13 +104,7 @@ test('github_comment posts comment on discussion via gh CLI', function () {
     });
 });
 
-test('github_reaction adds reaction to comment via gh CLI', function () {
-    RuleOutputConfig::factory()->create([
-        'rule_id' => $this->rule->id,
-        'github_comment' => false,
-        'github_reaction' => 'eyes',
-    ]);
-
+test('addReaction adds reaction to comment via gh CLI', function () {
     Process::fake();
 
     $payload = [
@@ -118,7 +113,7 @@ test('github_reaction adds reaction to comment via gh CLI', function () {
         'comment' => ['id' => 12345],
     ];
 
-    $this->handler->handle($this->agentRun, $this->rule, $payload);
+    $this->handler->addReaction('eyes', $payload);
 
     Process::assertRan(function ($process) {
         return $process->command[0] === 'gh'
@@ -129,12 +124,7 @@ test('github_reaction adds reaction to comment via gh CLI', function () {
     });
 });
 
-test('github_reaction uses pulls/comments for PR review comments', function () {
-    RuleOutputConfig::factory()->create([
-        'rule_id' => $this->rule->id,
-        'github_reaction' => 'rocket',
-    ]);
-
+test('addReaction uses pulls/comments for PR review comments', function () {
     Process::fake();
 
     $payload = [
@@ -143,19 +133,14 @@ test('github_reaction uses pulls/comments for PR review comments', function () {
         'comment' => ['id' => 67890],
     ];
 
-    $this->handler->handle($this->agentRun, $this->rule, $payload);
+    $this->handler->addReaction('rocket', $payload);
 
     Process::assertRan(function ($process) {
         return str_contains($process->command[4], '/repos/owner/repo/pulls/comments/67890/reactions');
     });
 });
 
-test('github_reaction uses discussions/comments for discussion comments', function () {
-    RuleOutputConfig::factory()->create([
-        'rule_id' => $this->rule->id,
-        'github_reaction' => 'heart',
-    ]);
-
+test('addReaction uses discussions/comments for discussion comments', function () {
     Process::fake();
 
     $payload = [
@@ -164,7 +149,7 @@ test('github_reaction uses discussions/comments for discussion comments', functi
         'comment' => ['id' => 11111],
     ];
 
-    $this->handler->handle($this->agentRun, $this->rule, $payload);
+    $this->handler->addReaction('heart', $payload);
 
     Process::assertRan(function ($process) {
         return str_contains($process->command[4], '/repos/owner/repo/discussions/comments/11111/reactions');
@@ -198,12 +183,7 @@ test('github_comment without repo logs warning', function () {
     Process::assertNothingRan();
 });
 
-test('github_reaction without comment logs warning', function () {
-    RuleOutputConfig::factory()->create([
-        'rule_id' => $this->rule->id,
-        'github_reaction' => 'eyes',
-    ]);
-
+test('addReaction without comment logs warning', function () {
     Process::fake();
     Log::shouldReceive('warning')->once()->with('No comment ID found in payload for GitHub reaction');
 
@@ -212,7 +192,7 @@ test('github_reaction without comment logs warning', function () {
         'issue' => ['number' => 42],
     ];
 
-    $this->handler->handle($this->agentRun, $this->rule, $payload);
+    $this->handler->addReaction('eyes', $payload);
 
     Process::assertNothingRan();
 });

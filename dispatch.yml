@@ -28,7 +28,7 @@ rules:
       3. Potential risks or edge cases
       4. A step-by-step implementation plan
 
-      Your response will be posted as a comment on the issue automatically.
+      Write your analysis as a well-structured markdown document.
     filters:
       -
         id: label-dispatch
