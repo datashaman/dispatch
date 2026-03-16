@@ -3,7 +3,7 @@ version: 1
 agent:
   name: dispatch
   executor: laravel-ai
-  instructions_file: CLAUDE.md
+  instructions_file: AGENTS.md
   provider: anthropic
   model: claude-sonnet-4-6
   secrets:
@@ -28,7 +28,7 @@ rules:
       3. Potential risks or edge cases
       4. A step-by-step implementation plan
 
-      Post your analysis as a comment on the issue.
+      Your response will be posted as a comment on the issue automatically.
     filters:
       -
         id: label-dispatch

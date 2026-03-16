@@ -33,6 +33,7 @@ class GlobTool implements Tool
         $finder = new Finder;
         $finder->files()
             ->in($baseDir)
+            ->exclude(['node_modules', 'vendor', '.git', '.worktrees', 'storage'])
             ->name($pattern)
             ->sortByName();
 
