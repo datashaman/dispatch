@@ -455,7 +455,8 @@
         "Tests for seeding"
       ],
       "priority": 28,
-      "passes": false
+      "passes": true,
+      "inProgress": false
     }
   ]
 }
