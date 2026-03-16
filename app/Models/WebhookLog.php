@@ -21,6 +21,7 @@ class WebhookLog extends Model
         'matched_rules',
         'status',
         'error',
+        'created_at',
     ];
 
     protected function casts(): array

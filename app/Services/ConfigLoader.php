@@ -202,6 +202,7 @@ class ConfigLoader
             provider: $data['provider'] ?? null,
             model: $data['model'] ?? null,
             maxTokens: isset($data['max_tokens']) ? (int) $data['max_tokens'] : null,
+            maxSteps: isset($data['max_steps']) ? (int) $data['max_steps'] : null,
             tools: $data['tools'] ?? null,
             disallowedTools: $data['disallowed_tools'] ?? null,
             isolation: (bool) ($data['isolation'] ?? false),

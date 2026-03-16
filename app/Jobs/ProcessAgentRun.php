@@ -169,6 +169,7 @@ class ProcessAgentRun implements ShouldQueue
             'provider' => $ruleConfig?->provider ?? $project?->agent_provider,
             'model' => $ruleConfig?->model ?? $project?->agent_model,
             'max_tokens' => $ruleConfig?->max_tokens,
+            'max_steps' => $ruleConfig?->max_steps,
             'tools' => $ruleConfig?->tools ?? [],
             'disallowed_tools' => $ruleConfig?->disallowed_tools ?? [],
             'isolation' => $ruleConfig?->isolation ?? false,

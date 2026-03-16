@@ -25,6 +25,7 @@ class AgentRun extends Model
         'cost',
         'duration_ms',
         'error',
+        'created_at',
     ];
 
     protected function casts(): array
