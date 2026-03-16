@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Contracts\Executor;
+use App\Executors\ClaudeCliExecutor;
 use App\Executors\LaravelAiExecutor;
 use App\Models\AgentRun;
 use App\Models\Rule;
@@ -71,6 +72,7 @@ class ProcessAgentRun implements ShouldQueue
         $executor = $project?->agent_executor ?? 'laravel-ai';
 
         return match ($executor) {
+            'claude-cli' => app(ClaudeCliExecutor::class),
             'laravel-ai' => app(LaravelAiExecutor::class),
             default => app(LaravelAiExecutor::class),
         };
