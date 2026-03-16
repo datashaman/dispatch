@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Exceptions\RuleMatchingException;
 use App\Models\WebhookLog;
 use App\Services\AgentDispatcher;
+use App\Services\PromptRenderer;
 use App\Services\RuleMatchingEngine;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -14,6 +15,7 @@ class WebhookController extends Controller
     public function __construct(
         protected RuleMatchingEngine $engine,
         protected AgentDispatcher $dispatcher,
+        protected PromptRenderer $promptRenderer,
     ) {}
 
     public function handle(Request $request): JsonResponse
@@ -107,6 +109,23 @@ class WebhookController extends Controller
             'matched_rules' => $matchedRules->pluck('rule_id')->toArray(),
             'status' => 'processed',
         ]);
+
+        if ($request->boolean('dry-run')) {
+            $results = $matchedRules->map(fn ($rule) => [
+                'rule' => $rule->rule_id,
+                'name' => $rule->name,
+                'prompt' => $this->promptRenderer->render($rule->prompt ?? '', $request->all()),
+            ])->values()->toArray();
+
+            return response()->json([
+                'ok' => true,
+                'event' => $eventType,
+                'matched' => $matchedRules->count(),
+                'dryRun' => true,
+                'webhook_log_id' => $webhookLog->id,
+                'results' => $results,
+            ]);
+        }
 
         $results = $this->dispatcher->dispatch($webhookLog, $matchedRules, $request->all());
 
