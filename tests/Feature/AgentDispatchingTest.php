@@ -210,13 +210,13 @@ test('no agent_runs created when no rules match', function () {
     expect(AgentRun::count())->toBe(0);
 });
 
-test('circuit breaker skips remaining rules when circuit_break rule fails', function () {
+test('skips remaining rules when a rule without continue_on_error fails', function () {
     $project = Project::factory()->create(['repo' => 'owner/repo']);
     $rule1 = Rule::factory()->create([
         'project_id' => $project->id,
         'rule_id' => 'gate',
         'event' => 'push',
-        'circuit_break' => true,
+        'continue_on_error' => false,
         'sort_order' => 1,
     ]);
     $rule2 = Rule::factory()->create([
@@ -238,7 +238,7 @@ test('circuit breaker skips remaining rules when circuit_break rule fails', func
     $matchedRules = collect([$rule1, $rule2]);
 
     // On sync queue, ProcessAgentRun::handle() marks as 'success' by default
-    // To test circuit break, we need the gate job to fail
+    // To test stop-on-failure, we need the gate job to fail
     // Override the job to throw an exception
     $this->mock(ProcessAgentRun::class)
         ->shouldReceive('dispatch')
@@ -254,20 +254,20 @@ test('circuit breaker skips remaining rules when circuit_break rule fails', func
     Queue::fake();
     $results = $dispatcher->dispatch($webhookLog, $matchedRules, []);
 
-    // With faked queue, both get queued (circuit break is post-execution)
+    // With faked queue, both get queued (stop-on-failure is post-execution)
     expect($results)->toHaveCount(2);
     expect($results[0]['rule'])->toBe('gate');
     expect($results[1]['rule'])->toBe('deploy');
 });
 
-test('dispatcher creates skipped agent_runs after circuit break on sync queue', function () {
-    // Test the circuit break path directly through the dispatcher
+test('dispatcher creates skipped agent_runs when continue_on_error is disabled and rule fails', function () {
+    // Test the stop-on-failure path directly through the dispatcher
     $project = Project::factory()->create(['repo' => 'owner/repo']);
     $rule1 = Rule::factory()->create([
         'project_id' => $project->id,
         'rule_id' => 'gate',
         'event' => 'push',
-        'circuit_break' => true,
+        'continue_on_error' => false,
         'sort_order' => 1,
     ]);
     $rule2 = Rule::factory()->create([
@@ -299,7 +299,7 @@ test('dispatcher creates skipped agent_runs after circuit break on sync queue', 
         'webhook_log_id' => $webhookLog->id,
         'rule_id' => 'deploy',
         'status' => 'skipped',
-        'error' => 'Skipped due to circuit breaker from a previous rule failure',
+        'error' => 'Skipped due to a previous rule failure',
         'created_at' => now(),
     ]);
 
@@ -310,7 +310,7 @@ test('dispatcher creates skipped agent_runs after circuit break on sync queue', 
     $this->assertDatabaseHas('agent_runs', [
         'rule_id' => 'deploy',
         'status' => 'skipped',
-        'error' => 'Skipped due to circuit breaker from a previous rule failure',
+        'error' => 'Skipped due to a previous rule failure',
     ]);
 });
 

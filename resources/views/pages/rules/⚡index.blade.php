@@ -7,6 +7,7 @@ use App\Models\Rule;
 use App\Models\RuleAgentConfig;
 use App\Models\RuleOutputConfig;
 use App\Models\RuleRetryConfig;
+use Illuminate\Support\Str;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
@@ -20,7 +21,7 @@ new #[Title('Rules & Filters')] class extends Component {
     public string $ruleName = '';
     public string $ruleEvent = '';
     public string $rulePrompt = '';
-    public bool $ruleCircuitBreak = false;
+    public bool $ruleContinueOnError = false;
     public int $ruleSortOrder = 0;
 
     // Filter form
@@ -103,7 +104,7 @@ new #[Title('Rules & Filters')] class extends Component {
         $this->ruleName = $rule->name ?? '';
         $this->ruleEvent = $rule->event;
         $this->rulePrompt = $rule->prompt ?? '';
-        $this->ruleCircuitBreak = $rule->circuit_break;
+        $this->ruleContinueOnError = $rule->continue_on_error;
         $this->ruleSortOrder = $rule->sort_order ?? 0;
         $this->showRuleForm = true;
     }
@@ -133,7 +134,7 @@ new #[Title('Rules & Filters')] class extends Component {
             'name' => $this->ruleName,
             'event' => $this->ruleEvent,
             'prompt' => $this->rulePrompt,
-            'circuit_break' => $this->ruleCircuitBreak,
+            'continue_on_error' => $this->ruleContinueOnError,
             'sort_order' => $this->ruleSortOrder,
         ];
 
@@ -166,7 +167,7 @@ new #[Title('Rules & Filters')] class extends Component {
         $this->ruleName = '';
         $this->ruleEvent = '';
         $this->rulePrompt = '';
-        $this->ruleCircuitBreak = false;
+        $this->ruleContinueOnError = false;
         $this->ruleSortOrder = 0;
     }
 
@@ -241,6 +242,45 @@ new #[Title('Rules & Filters')] class extends Component {
         $this->filterOperator = 'equals';
         $this->filterValue = '';
         $this->filterSortOrder = 0;
+    }
+
+    public function getEvents(): array
+    {
+        return config('dispatch.events', []);
+    }
+
+    public function getEventVariables(?string $event): array
+    {
+        return config("dispatch.events.{$event}.variables", []);
+    }
+
+    public function updatedRuleName(): void
+    {
+        if (! $this->editingRuleId) {
+            $this->ruleId = Str::slug($this->ruleName);
+        }
+    }
+
+    public function getProviders(): array
+    {
+        return config('dispatch.providers', []);
+    }
+
+    public function getModelsForProvider(?string $provider): array
+    {
+        if (! $provider) {
+            return [];
+        }
+
+        return config("dispatch.providers.{$provider}.models", []);
+    }
+
+    public function updatedAgentProvider(): void
+    {
+        $models = $this->getModelsForProvider($this->agentProvider);
+        if (! array_key_exists($this->agentModel, $models)) {
+            $this->agentModel = $models ? array_key_first($models) : '';
+        }
     }
 
     // --- Agent Config ---
@@ -350,6 +390,15 @@ new #[Title('Rules & Filters')] class extends Component {
         $this->showRetryConfigForm = false;
     }
 
+    // --- Expand/Collapse ---
+
+    public ?int $expandedRuleId = null;
+
+    public function toggleExpand(int $ruleId): void
+    {
+        $this->expandedRuleId = $this->expandedRuleId === $ruleId ? null : $ruleId;
+    }
+
     // --- Prompt Preview ---
 
     public function openPromptPreview(int $ruleId): void
@@ -364,9 +413,56 @@ new #[Title('Rules & Filters')] class extends Component {
 
         return array_unique($matches[1] ?? []);
     }
+
+    public function getRuleSummary(Rule $rule): string
+    {
+        $parts = [];
+
+        // Event description
+        $eventLabel = config("dispatch.events.{$rule->event}.label", $rule->event);
+        $parts[] = 'When ' . $eventLabel;
+
+        // Filters
+        $filterParts = [];
+        foreach ($rule->filters as $filter) {
+            $field = str_replace('event.', '', $filter->field);
+            $field = str_replace('.', ' ', $field);
+            $op = match ($filter->operator->value) {
+                'equals' => 'is',
+                'not_equals' => 'is not',
+                'contains' => 'contains',
+                'not_contains' => 'does not contain',
+                'starts_with' => 'starts with',
+                'ends_with' => 'ends with',
+                'matches' => 'matches',
+            };
+            $filterParts[] = "{$field} {$op} \"{$filter->value}\"";
+        }
+        if ($filterParts) {
+            $parts[] = 'and ' . implode(' and ', $filterParts);
+        }
+
+        // Action
+        $name = $rule->name ?: $rule->rule_id;
+        $parts[] = "→ {$name}";
+
+        // Output
+        $outputs = [];
+        if ($rule->outputConfig?->github_comment) {
+            $outputs[] = 'post comment';
+        }
+        if ($rule->outputConfig?->github_reaction) {
+            $outputs[] = 'react ' . $rule->outputConfig->github_reaction;
+        }
+        if ($outputs) {
+            $parts[] = '(' . implode(', ', $outputs) . ')';
+        }
+
+        return implode(' ', $parts);
+    }
 }; ?>
 
-<section class="w-full max-w-5xl">
+<section class="w-full">
     @php
         $project = $this->getProject();
         $rules = $this->getRules();
@@ -405,50 +501,82 @@ new #[Title('Rules & Filters')] class extends Component {
         @endif
 
         {{-- Rule Form Modal --}}
-        <flux:modal wire:model="showRuleForm">
+        <flux:modal wire:model="showRuleForm" class="md:w-2xl">
             <form wire:submit="saveRule">
-                <flux:heading size="lg">{{ $editingRuleId ? __('Edit Rule') : __('Add Rule') }}</flux:heading>
-                <flux:text class="mt-1">{{ __('Configure a webhook dispatch rule.') }}</flux:text>
+                <flux:heading size="lg">{{ $editingRuleId ? __('Edit Rule') : __('New Rule') }}</flux:heading>
 
-                <div class="mt-6 space-y-4">
-                    <flux:field>
-                        <flux:label>{{ __('Rule ID') }}</flux:label>
-                        <flux:input wire:model="ruleId" placeholder="analyze" required :disabled="(bool) $editingRuleId" />
-                        <flux:error name="ruleId" />
-                    </flux:field>
+                <div class="mt-6 space-y-6">
+                    {{-- Narrative: When... --}}
+                    <div>
+                        <flux:text class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">{{ __('When...') }}</flux:text>
+                        <flux:field>
+                            <flux:select wire:model.live="ruleEvent" required>
+                                <flux:select.option value="">{{ __('Choose an event...') }}</flux:select.option>
+                                @foreach ($this->getEvents() as $key => $event)
+                                    <flux:select.option value="{{ $key }}">{{ $event['label'] }}</flux:select.option>
+                                @endforeach
+                            </flux:select>
+                            <flux:error name="ruleEvent" />
+                        </flux:field>
+                    </div>
 
-                    <flux:field>
-                        <flux:label>{{ __('Name') }}</flux:label>
-                        <flux:input wire:model="ruleName" placeholder="Analyze Issues" />
-                    </flux:field>
+                    {{-- Narrative: Then run... --}}
+                    <div>
+                        <flux:text class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">{{ __('Then run...') }}</flux:text>
+                        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <flux:field>
+                                <flux:label>{{ __('Name') }}</flux:label>
+                                <flux:input wire:model.live.debounce.300ms="ruleName" placeholder="e.g. Analyze Issue" />
+                            </flux:field>
+                            <flux:field>
+                                <flux:label>{{ __('Rule ID') }}</flux:label>
+                                <flux:input wire:model="ruleId" placeholder="auto-generated from name" required :disabled="(bool) $editingRuleId" />
+                                <flux:error name="ruleId" />
+                            </flux:field>
+                        </div>
+                    </div>
 
-                    <flux:field>
-                        <flux:label>{{ __('Event') }}</flux:label>
-                        <flux:input wire:model="ruleEvent" placeholder="issues.labeled" required />
-                        <flux:error name="ruleEvent" />
-                    </flux:field>
+                    {{-- Narrative: With this prompt... --}}
+                    <div>
+                        <flux:text class="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">{{ __('With this prompt...') }}</flux:text>
+                        <flux:field>
+                            <flux:textarea wire:model="rulePrompt" placeholder="Describe what the agent should do..." rows="5" />
+                        </flux:field>
 
-                    <flux:field>
-                        <flux:label>{{ __('Prompt Template') }}</flux:label>
-                        <flux:textarea wire:model="rulePrompt" placeholder="Enter the prompt template for this rule..." rows="4" />
-                    </flux:field>
+                        @if ($ruleEvent)
+                            @php $vars = $this->getEventVariables($ruleEvent); @endphp
+                            @if (count($vars) > 0)
+                                <div class="mt-2">
+                                    <flux:text variant="subtle" class="text-xs mb-1">{{ __('Available variables for this event:') }}</flux:text>
+                                    <div class="flex flex-wrap gap-1">
+                                        @foreach ($vars as $var)
+                                            @php $templateTag = '{{ event.' . $var . ' }}'; @endphp
+                                            <span class="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 text-xs font-mono text-blue-700 dark:text-blue-300 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/50" title="{{ __('Click to copy') }}" x-data x-on:click="navigator.clipboard.writeText(@js($templateTag))">
+                                                {{ $var }}
+                                            </span>
+                                        @endforeach
+                                    </div>
+                                </div>
+                            @endif
+                        @endif
+                    </div>
 
-                    <div class="flex items-center gap-6">
+                    {{-- Options --}}
+                    <div class="flex items-center gap-6 pt-2 border-t border-zinc-200 dark:border-zinc-700">
                         <flux:field>
                             <flux:label>{{ __('Sort Order') }}</flux:label>
                             <flux:input wire:model="ruleSortOrder" type="number" class="w-24" />
                         </flux:field>
 
-                        <flux:field class="flex items-center gap-2 pt-6">
-                            <flux:checkbox wire:model="ruleCircuitBreak" />
-                            <flux:label>{{ __('Circuit Break') }}</flux:label>
+                        <flux:field class="pt-6">
+                            <flux:switch wire:model="ruleContinueOnError" label="{{ __('Continue on error') }}" description="{{ __('Keep processing remaining rules even if this one fails.') }}" />
                         </flux:field>
                     </div>
                 </div>
 
                 <div class="mt-6 flex justify-end gap-2">
                     <flux:button variant="ghost" wire:click="$set('showRuleForm', false)">{{ __('Cancel') }}</flux:button>
-                    <flux:button variant="primary" type="submit">{{ $editingRuleId ? __('Update Rule') : __('Add Rule') }}</flux:button>
+                    <flux:button variant="primary" type="submit">{{ $editingRuleId ? __('Save Changes') : __('Create Rule') }}</flux:button>
                 </div>
             </form>
         </flux:modal>
@@ -456,46 +584,54 @@ new #[Title('Rules & Filters')] class extends Component {
         {{-- Filter Form Modal --}}
         <flux:modal wire:model="showFilterForm">
             <form wire:submit="saveFilter">
-                <flux:heading size="lg">{{ $editingFilterId ? __('Edit Filter') : __('Add Filter') }}</flux:heading>
-                <flux:text class="mt-1">{{ __('Define a condition for this rule to match.') }}</flux:text>
+                <flux:heading size="lg">{{ $editingFilterId ? __('Edit Condition') : __('Add Condition') }}</flux:heading>
+                <flux:text class="mt-1">{{ __('Only trigger this rule when...') }}</flux:text>
 
                 <div class="mt-6 space-y-4">
-                    <flux:field>
-                        <flux:label>{{ __('Filter ID') }}</flux:label>
-                        <flux:input wire:model="filterId" placeholder="label-check" />
-                    </flux:field>
+                    {{-- Narrative: the [field] [operator] [value] --}}
+                    <div class="flex items-start gap-3">
+                        <flux:text class="pt-2 text-sm font-medium text-zinc-500 shrink-0">{{ __('the') }}</flux:text>
+                        <flux:field class="flex-1">
+                            <flux:input wire:model="filterField" placeholder="e.g. event.label.name" required />
+                            <flux:error name="filterField" />
+                        </flux:field>
+                    </div>
 
-                    <flux:field>
-                        <flux:label>{{ __('Field') }}</flux:label>
-                        <flux:input wire:model="filterField" placeholder="event.label.name" required />
-                        <flux:error name="filterField" />
-                    </flux:field>
+                    <div class="flex items-start gap-3">
+                        <flux:field class="w-48 shrink-0">
+                            <flux:select wire:model="filterOperator">
+                                <flux:select.option value="equals">{{ __('is') }}</flux:select.option>
+                                <flux:select.option value="not_equals">{{ __('is not') }}</flux:select.option>
+                                <flux:select.option value="contains">{{ __('contains') }}</flux:select.option>
+                                <flux:select.option value="not_contains">{{ __('does not contain') }}</flux:select.option>
+                                <flux:select.option value="starts_with">{{ __('starts with') }}</flux:select.option>
+                                <flux:select.option value="ends_with">{{ __('ends with') }}</flux:select.option>
+                                <flux:select.option value="matches">{{ __('matches (regex)') }}</flux:select.option>
+                            </flux:select>
+                            <flux:error name="filterOperator" />
+                        </flux:field>
+                        <flux:field class="flex-1">
+                            <flux:input wire:model="filterValue" placeholder="e.g. sparky" required />
+                            <flux:error name="filterValue" />
+                        </flux:field>
+                    </div>
 
-                    <flux:field>
-                        <flux:label>{{ __('Operator') }}</flux:label>
-                        <flux:select wire:model="filterOperator">
-                            @foreach (FilterOperator::cases() as $op)
-                                <flux:select.option value="{{ $op->value }}">{{ $op->value }}</flux:select.option>
-                            @endforeach
-                        </flux:select>
-                        <flux:error name="filterOperator" />
-                    </flux:field>
-
-                    <flux:field>
-                        <flux:label>{{ __('Value') }}</flux:label>
-                        <flux:input wire:model="filterValue" placeholder="sparky" required />
-                        <flux:error name="filterValue" />
-                    </flux:field>
-
-                    <flux:field>
-                        <flux:label>{{ __('Sort Order') }}</flux:label>
-                        <flux:input wire:model="filterSortOrder" type="number" class="w-24" />
-                    </flux:field>
+                    {{-- Advanced --}}
+                    <div class="flex items-center gap-4 pt-2 border-t border-zinc-200 dark:border-zinc-700">
+                        <flux:field class="flex-1">
+                            <flux:label>{{ __('Filter ID') }}</flux:label>
+                            <flux:input wire:model="filterId" placeholder="e.g. label-check" />
+                        </flux:field>
+                        <flux:field>
+                            <flux:label>{{ __('Order') }}</flux:label>
+                            <flux:input wire:model="filterSortOrder" type="number" class="w-20" />
+                        </flux:field>
+                    </div>
                 </div>
 
                 <div class="mt-6 flex justify-end gap-2">
                     <flux:button variant="ghost" wire:click="$set('showFilterForm', false)">{{ __('Cancel') }}</flux:button>
-                    <flux:button variant="primary" type="submit">{{ $editingFilterId ? __('Update Filter') : __('Add Filter') }}</flux:button>
+                    <flux:button variant="primary" type="submit">{{ $editingFilterId ? __('Save') : __('Add Condition') }}</flux:button>
                 </div>
             </form>
         </flux:modal>
@@ -509,12 +645,22 @@ new #[Title('Rules & Filters')] class extends Component {
                 <div class="mt-6 space-y-4">
                     <flux:field>
                         <flux:label>{{ __('Provider') }}</flux:label>
-                        <flux:input wire:model="agentProvider" placeholder="anthropic" />
+                        <flux:select wire:model.live="agentProvider">
+                            <flux:select.option value="">{{ __('Use project default') }}</flux:select.option>
+                            @foreach ($this->getProviders() as $key => $provider)
+                                <flux:select.option value="{{ $key }}">{{ $provider['label'] }}</flux:select.option>
+                            @endforeach
+                        </flux:select>
                     </flux:field>
 
                     <flux:field>
                         <flux:label>{{ __('Model') }}</flux:label>
-                        <flux:input wire:model="agentModel" placeholder="claude-sonnet-4-6" />
+                        <flux:select wire:model="agentModel" :disabled="! $agentProvider">
+                            <flux:select.option value="">{{ $agentProvider ? __('Select a model') : __('Select a provider first') }}</flux:select.option>
+                            @foreach ($this->getModelsForProvider($agentProvider) as $key => $label)
+                                <flux:select.option value="{{ $key }}">{{ $label }}</flux:select.option>
+                            @endforeach
+                        </flux:select>
                     </flux:field>
 
                     <flux:field>
@@ -534,9 +680,8 @@ new #[Title('Rules & Filters')] class extends Component {
                         <flux:text variant="subtle" class="text-xs">{{ __('Comma-separated list of disallowed tools.') }}</flux:text>
                     </flux:field>
 
-                    <flux:field class="flex items-center gap-2">
-                        <flux:checkbox wire:model="agentIsolation" />
-                        <flux:label>{{ __('Isolation (git worktree)') }}</flux:label>
+                    <flux:field>
+                        <flux:switch wire:model="agentIsolation" label="{{ __('Isolation (git worktree)') }}" />
                     </flux:field>
                 </div>
 
@@ -554,14 +699,12 @@ new #[Title('Rules & Filters')] class extends Component {
                 <flux:text class="mt-1">{{ __('Configure where agent output is sent.') }}</flux:text>
 
                 <div class="mt-6 space-y-4">
-                    <flux:field class="flex items-center gap-2">
-                        <flux:checkbox wire:model="outputLog" />
-                        <flux:label>{{ __('Log output') }}</flux:label>
+                    <flux:field>
+                        <flux:switch wire:model="outputLog" label="{{ __('Log output') }}" />
                     </flux:field>
 
-                    <flux:field class="flex items-center gap-2">
-                        <flux:checkbox wire:model="outputGithubComment" />
-                        <flux:label>{{ __('Post as GitHub comment') }}</flux:label>
+                    <flux:field>
+                        <flux:switch wire:model="outputGithubComment" label="{{ __('Post as GitHub comment') }}" />
                     </flux:field>
 
                     <flux:field>
@@ -584,9 +727,8 @@ new #[Title('Rules & Filters')] class extends Component {
                 <flux:text class="mt-1">{{ __('Configure retry behavior for failed agent runs.') }}</flux:text>
 
                 <div class="mt-6 space-y-4">
-                    <flux:field class="flex items-center gap-2">
-                        <flux:checkbox wire:model="retryEnabled" />
-                        <flux:label>{{ __('Enable retries') }}</flux:label>
+                    <flux:field>
+                        <flux:switch wire:model="retryEnabled" label="{{ __('Enable retries') }}" />
                     </flux:field>
 
                     <flux:field>
@@ -655,112 +797,116 @@ new #[Title('Rules & Filters')] class extends Component {
                 <flux:text class="mt-2">{{ __('Add a rule to start dispatching webhooks to agents.') }}</flux:text>
             </div>
         @else
-            <div class="space-y-4">
+            <div class="space-y-2">
                 @foreach ($rules as $rule)
-                    <div class="rounded-xl border border-zinc-200 dark:border-zinc-700" wire:key="rule-{{ $rule->id }}">
-                        {{-- Rule Header --}}
-                        <div class="flex items-start justify-between gap-4 p-4">
+                    <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden" wire:key="rule-{{ $rule->id }}">
+                        {{-- Summary Row --}}
+                        <div class="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50" wire:click="toggleExpand({{ $rule->id }})">
+                            <flux:icon name="{{ $expandedRuleId === $rule->id ? 'chevron-down' : 'chevron-right' }}" class="h-4 w-4 shrink-0 text-zinc-400" />
                             <div class="min-w-0 flex-1">
-                                <div class="flex items-center gap-2">
-                                    <flux:heading size="sm">{{ $rule->rule_id }}</flux:heading>
-                                    @if ($rule->name)
-                                        <flux:text variant="subtle">&mdash; {{ $rule->name }}</flux:text>
-                                    @endif
-                                    @if ($rule->circuit_break)
-                                        <span class="inline-flex items-center rounded-md bg-amber-50 dark:bg-amber-900/30 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
-                                            {{ __('Circuit Break') }}
-                                        </span>
-                                    @endif
-                                </div>
-                                <div class="mt-1 flex items-center gap-3">
-                                    <flux:text class="font-mono text-xs">{{ $rule->event }}</flux:text>
-                                    <flux:text variant="subtle" class="text-xs">{{ __('Sort:') }} {{ $rule->sort_order }}</flux:text>
-                                </div>
+                                <span class="text-sm">{{ $this->getRuleSummary($rule) }}</span>
                             </div>
-
-                            <div class="flex items-center gap-1">
-                                <flux:button variant="ghost" size="sm" icon="pencil" wire:click="openEditRule({{ $rule->id }})">
-                                    {{ __('Edit') }}
-                                </flux:button>
-                                @if ($rule->prompt)
-                                    <flux:button variant="ghost" size="sm" icon="eye" wire:click="openPromptPreview({{ $rule->id }})">
-                                        {{ __('Prompt') }}
-                                    </flux:button>
+                            <div class="flex items-center gap-2 shrink-0">
+                                @if ($rule->continue_on_error)
+                                    <flux:badge size="sm" color="amber">{{ __('Continue on error') }}</flux:badge>
                                 @endif
-
-                                @if ($confirmingDeleteRule === $rule->id)
-                                    <flux:button variant="danger" size="sm" icon="check" wire:click="deleteRule({{ $rule->id }})">
-                                        {{ __('Confirm') }}
-                                    </flux:button>
-                                    <flux:button variant="ghost" size="sm" wire:click="$set('confirmingDeleteRule', null)">
-                                        {{ __('Cancel') }}
-                                    </flux:button>
-                                @else
-                                    <flux:button variant="ghost" size="sm" icon="trash" wire:click="$set('confirmingDeleteRule', {{ $rule->id }})">
-                                        {{ __('Delete') }}
-                                    </flux:button>
+                                @if ($rule->agentConfig?->isolation)
+                                    <flux:badge size="sm" color="sky">{{ __('Worktree') }}</flux:badge>
                                 @endif
+                                <flux:badge size="sm">{{ $rule->rule_id }}</flux:badge>
                             </div>
                         </div>
 
-                        {{-- Config Buttons --}}
-                        <div class="border-t border-zinc-200 dark:border-zinc-700 px-4 py-2 flex items-center gap-2">
-                            <flux:button variant="ghost" size="sm" icon="cpu-chip" wire:click="openAgentConfig({{ $rule->id }})">
-                                {{ __('Agent') }}
-                                @if ($rule->agentConfig)
-                                    <span class="ml-1 inline-block h-2 w-2 rounded-full bg-green-500"></span>
-                                @endif
-                            </flux:button>
-                            <flux:button variant="ghost" size="sm" icon="arrow-up-tray" wire:click="openOutputConfig({{ $rule->id }})">
-                                {{ __('Output') }}
-                                @if ($rule->outputConfig)
-                                    <span class="ml-1 inline-block h-2 w-2 rounded-full bg-green-500"></span>
-                                @endif
-                            </flux:button>
-                            <flux:button variant="ghost" size="sm" icon="arrow-path" wire:click="openRetryConfig({{ $rule->id }})">
-                                {{ __('Retry') }}
-                                @if ($rule->retryConfig)
-                                    <span class="ml-1 inline-block h-2 w-2 rounded-full bg-green-500"></span>
-                                @endif
-                            </flux:button>
-                        </div>
+                        {{-- Expanded Detail --}}
+                        @if ($expandedRuleId === $rule->id)
+                            <div class="border-t border-zinc-200 dark:border-zinc-700">
+                                {{-- Actions Bar --}}
+                                <div class="flex items-center justify-between bg-zinc-50 dark:bg-zinc-800/50 px-4 py-2">
+                                    <div class="flex items-center gap-2">
+                                        @if ($rule->agentConfig?->tools)
+                                            @foreach ($rule->agentConfig->tools as $tool)
+                                                <flux:badge size="sm">{{ $tool }}</flux:badge>
+                                            @endforeach
+                                        @endif
+                                    </div>
+                                    <div class="flex items-center gap-1">
+                                        <flux:dropdown>
+                                            <flux:button variant="ghost" size="sm" icon="cog-6-tooth" icon-trailing="chevron-down">
+                                                {{ __('Configure') }}
+                                            </flux:button>
 
-                        {{-- Filters Section --}}
-                        <div class="border-t border-zinc-200 dark:border-zinc-700 px-4 py-3">
-                            <div class="flex items-center justify-between mb-2">
-                                <flux:text variant="subtle" class="text-xs font-medium uppercase tracking-wide">{{ __('Filters') }}</flux:text>
-                                <flux:button variant="ghost" size="sm" icon="plus" wire:click="openAddFilter({{ $rule->id }})">
-                                    {{ __('Add') }}
-                                </flux:button>
-                            </div>
-
-                            @if ($rule->filters->isEmpty())
-                                <flux:text variant="subtle" class="text-xs">{{ __('No filters — rule matches all events of this type.') }}</flux:text>
-                            @else
-                                <div class="space-y-1">
-                                    @foreach ($rule->filters as $filter)
-                                        <div class="flex items-center justify-between rounded-lg bg-zinc-50 dark:bg-zinc-800 px-3 py-2" wire:key="filter-{{ $filter->id }}">
-                                            <div class="flex items-center gap-2 font-mono text-xs">
-                                                <span>{{ $filter->field }}</span>
-                                                <span class="text-zinc-500">{{ $filter->operator->value }}</span>
-                                                <span class="font-semibold">{{ $filter->value }}</span>
-                                            </div>
-                                            <div class="flex items-center gap-1">
-                                                <flux:button variant="ghost" size="sm" icon="pencil" wire:click="openEditFilter({{ $filter->id }})" />
-                                                @if ($confirmingDeleteFilter === $filter->id)
-                                                    <flux:button variant="danger" size="sm" icon="check" wire:click="deleteFilter({{ $filter->id }})" />
-                                                    <flux:button variant="ghost" size="sm" wire:click="$set('confirmingDeleteFilter', null)">
-                                                        {{ __('Cancel') }}
-                                                    </flux:button>
-                                                @else
-                                                    <flux:button variant="ghost" size="sm" icon="trash" wire:click="$set('confirmingDeleteFilter', {{ $filter->id }})" />
+                                            <flux:menu>
+                                                <flux:menu.item icon="pencil" wire:click="openEditRule({{ $rule->id }})">{{ __('Edit Rule') }}</flux:menu.item>
+                                                @if ($rule->prompt)
+                                                    <flux:menu.item icon="eye" wire:click="openPromptPreview({{ $rule->id }})">{{ __('View Prompt') }}</flux:menu.item>
                                                 @endif
-                                            </div>
-                                        </div>
-                                    @endforeach
+                                                <flux:menu.separator />
+                                                <flux:menu.item icon="cpu-chip" wire:click="openAgentConfig({{ $rule->id }})">{{ __('Agent Settings') }}</flux:menu.item>
+                                                <flux:menu.item icon="arrow-up-tray" wire:click="openOutputConfig({{ $rule->id }})">{{ __('Output Settings') }}</flux:menu.item>
+                                                <flux:menu.item icon="arrow-path" wire:click="openRetryConfig({{ $rule->id }})">{{ __('Retry Settings') }}</flux:menu.item>
+                                            </flux:menu>
+                                        </flux:dropdown>
+
+                                        @if ($confirmingDeleteRule === $rule->id)
+                                            <flux:button variant="danger" size="sm" icon="check" wire:click="deleteRule({{ $rule->id }})">
+                                                {{ __('Confirm') }}
+                                            </flux:button>
+                                            <flux:button variant="ghost" size="sm" wire:click="$set('confirmingDeleteRule', null)">
+                                                {{ __('Cancel') }}
+                                            </flux:button>
+                                        @else
+                                            <flux:button variant="ghost" size="sm" icon="trash" wire:click="$set('confirmingDeleteRule', {{ $rule->id }})">
+                                                {{ __('Delete') }}
+                                            </flux:button>
+                                        @endif
+                                    </div>
                                 </div>
-                            @endif
-                        </div>
+
+                                {{-- Prompt Preview --}}
+                                @if ($rule->prompt)
+                                    <div class="border-t border-zinc-200 dark:border-zinc-700 px-4 py-3">
+                                        <pre class="text-xs font-mono text-zinc-500 dark:text-zinc-400 whitespace-pre-wrap line-clamp-4">{{ $rule->prompt }}</pre>
+                                    </div>
+                                @endif
+
+                                {{-- Filters --}}
+                                <div class="border-t border-zinc-200 dark:border-zinc-700 bg-zinc-100/50 dark:bg-zinc-800 px-4 py-3">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <flux:text variant="subtle" class="text-xs font-medium uppercase tracking-wide">{{ __('Filters') }}</flux:text>
+                                        <flux:button variant="ghost" size="sm" icon="plus" wire:click="openAddFilter({{ $rule->id }})">
+                                            {{ __('Add') }}
+                                        </flux:button>
+                                    </div>
+
+                                    @if ($rule->filters->isEmpty())
+                                        <flux:text variant="subtle" class="text-xs italic">{{ __('No filters — matches all events of this type.') }}</flux:text>
+                                    @else
+                                        <div class="space-y-1">
+                                            @foreach ($rule->filters as $filter)
+                                                <div class="flex items-center justify-between rounded-lg bg-white dark:bg-zinc-900 px-3 py-2 border border-zinc-200 dark:border-zinc-700" wire:key="filter-{{ $filter->id }}">
+                                                    <div class="flex items-center gap-2 font-mono text-xs">
+                                                        <span class="text-zinc-700 dark:text-zinc-300">{{ $filter->field }}</span>
+                                                        <flux:badge size="sm" color="zinc">{{ $filter->operator->value }}</flux:badge>
+                                                        <span class="font-semibold text-zinc-900 dark:text-zinc-100">"{{ $filter->value }}"</span>
+                                                    </div>
+                                                    <div class="flex items-center gap-1">
+                                                        <flux:button variant="ghost" size="sm" icon="pencil" wire:click="openEditFilter({{ $filter->id }})" />
+                                                        @if ($confirmingDeleteFilter === $filter->id)
+                                                            <flux:button variant="danger" size="sm" icon="check" wire:click="deleteFilter({{ $filter->id }})" />
+                                                            <flux:button variant="ghost" size="sm" wire:click="$set('confirmingDeleteFilter', null)">
+                                                                {{ __('Cancel') }}
+                                                            </flux:button>
+                                                        @else
+                                                            <flux:button variant="ghost" size="sm" icon="trash" wire:click="$set('confirmingDeleteFilter', {{ $filter->id }})" />
+                                                        @endif
+                                                    </div>
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    @endif
+                                </div>
+                            </div>
+                        @endif
                     </div>
                 @endforeach
             </div>

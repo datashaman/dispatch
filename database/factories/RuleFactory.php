@@ -18,16 +18,16 @@ class RuleFactory extends Factory
             'rule_id' => fake()->slug(2),
             'name' => fake()->sentence(3),
             'event' => fake()->randomElement(['issues.labeled', 'issue_comment.created', 'pull_request_review_comment.created', 'discussion_comment.created']),
-            'circuit_break' => false,
+            'continue_on_error' => false,
             'prompt' => fake()->paragraph(),
             'sort_order' => 0,
         ];
     }
 
-    public function withCircuitBreak(): static
+    public function withContinueOnError(): static
     {
         return $this->state(fn (array $attributes) => [
-            'circuit_break' => true,
+            'continue_on_error' => true,
         ]);
     }
 }

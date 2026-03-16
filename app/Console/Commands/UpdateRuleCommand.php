@@ -13,7 +13,7 @@ class UpdateRuleCommand extends Command
         {--name= : Human-readable name for the rule}
         {--event= : Webhook event type (e.g. issues.labeled)}
         {--prompt= : Prompt template for the agent}
-        {--circuit-break= : Enable circuit breaking (true/false)}
+        {--continue-on-error= : Continue on error (true/false)}
         {--sort-order= : Sort order for rule execution}';
 
     protected $description = 'Update an existing rule for a project';
@@ -53,8 +53,8 @@ class UpdateRuleCommand extends Command
             $updates['prompt'] = $this->option('prompt');
         }
 
-        if ($this->option('circuit-break') !== null) {
-            $updates['circuit_break'] = filter_var($this->option('circuit-break'), FILTER_VALIDATE_BOOLEAN);
+        if ($this->option('continue-on-error') !== null) {
+            $updates['continue_on_error'] = filter_var($this->option('continue-on-error'), FILTER_VALIDATE_BOOLEAN);
         }
 
         if ($this->option('sort-order') !== null) {

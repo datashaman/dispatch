@@ -46,7 +46,7 @@ test('rules table has required columns', function () {
         'rule_id' => 'analyze',
         'name' => 'Analyze Issue',
         'event' => 'issues.labeled',
-        'circuit_break' => true,
+        'continue_on_error' => true,
         'prompt' => 'Analyze this issue',
         'sort_order' => 1,
     ]);
@@ -54,7 +54,7 @@ test('rules table has required columns', function () {
     expect($rule->rule_id)->toBe('analyze')
         ->and($rule->name)->toBe('Analyze Issue')
         ->and($rule->event)->toBe('issues.labeled')
-        ->and($rule->circuit_break)->toBeTrue()
+        ->and($rule->continue_on_error)->toBeTrue()
         ->and($rule->prompt)->toBe('Analyze this issue')
         ->and($rule->sort_order)->toBe(1);
 });

@@ -46,7 +46,7 @@ rules:
   - id: "analyze"
     name: "Analyze Issue"
     event: "issues.labeled"
-    circuit_break: false
+    continue_on_error: false
     sort_order: 0
     filters:
       - id: "label-filter"
@@ -76,7 +76,7 @@ rules:
   - id: "implement"
     name: "Implement Feature"
     event: "issue_comment.created"
-    circuit_break: true
+    continue_on_error: true
     sort_order: 1
     filters:
       - field: "event.comment.body"
@@ -128,7 +128,7 @@ describe('import', function () {
         $rule = Rule::where('rule_id', 'analyze')->first();
         expect($rule->name)->toBe('Analyze Issue');
         expect($rule->event)->toBe('issues.labeled');
-        expect($rule->circuit_break)->toBeFalse();
+        expect($rule->continue_on_error)->toBeFalse();
         expect($rule->sort_order)->toBe(0);
     });
 

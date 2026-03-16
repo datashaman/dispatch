@@ -122,7 +122,7 @@ describe('dispatch:show-rule', function () {
             'rule_id' => 'analyze',
             'name' => 'Analyze Issues',
             'event' => 'issues.labeled',
-            'circuit_break' => false,
+            'continue_on_error' => false,
             'sort_order' => 1,
             'prompt' => 'Analyze the issue: {{ event.issue.title }}',
         ]);

@@ -33,12 +33,12 @@ class ListRulesCommand extends Command
         }
 
         $this->table(
-            ['Rule ID', 'Name', 'Event', 'Circuit Break', 'Sort Order'],
+            ['Rule ID', 'Name', 'Event', 'Continue on Error', 'Sort Order'],
             $rules->map(fn ($rule) => [
                 $rule->rule_id,
                 $rule->name,
                 $rule->event,
-                $rule->circuit_break ? 'Yes' : 'No',
+                $rule->continue_on_error ? 'Yes' : 'No',
                 $rule->sort_order,
             ]),
         );

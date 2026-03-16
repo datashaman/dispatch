@@ -10,9 +10,87 @@ new #[Title('Projects')] class extends Component {
     public string $newRepo = '';
     public string $newPath = '';
     public bool $showAddForm = false;
+    public bool $showEditForm = false;
+    public ?int $editingProjectId = null;
+    public string $editRepo = '';
+    public string $editPath = '';
+    public ?string $editAgentName = null;
+    public ?string $editAgentExecutor = null;
+    public ?string $editAgentProvider = null;
+    public ?string $editAgentModel = null;
+    public ?string $editAgentInstructionsFile = null;
+    public bool $editCacheConfig = false;
     public ?int $confirmingDelete = null;
     public string $statusMessage = '';
     public string $errorMessage = '';
+
+    public function getProviders(): array
+    {
+        return config('dispatch.providers', []);
+    }
+
+    public function getModelsForProvider(?string $provider): array
+    {
+        if (! $provider) {
+            return [];
+        }
+
+        return config("dispatch.providers.{$provider}.models", []);
+    }
+
+    public function updatedEditAgentProvider(): void
+    {
+        $models = $this->getModelsForProvider($this->editAgentProvider);
+        if (! array_key_exists($this->editAgentModel ?? '', $models)) {
+            $this->editAgentModel = $models ? array_key_first($models) : null;
+        }
+    }
+
+    public function editProject(int $id): void
+    {
+        $project = Project::findOrFail($id);
+        $this->editingProjectId = $project->id;
+        $this->editRepo = $project->repo;
+        $this->editPath = $project->path;
+        $this->editAgentName = $project->agent_name;
+        $this->editAgentExecutor = $project->agent_executor;
+        $this->editAgentProvider = $project->agent_provider;
+        $this->editAgentModel = $project->agent_model;
+        $this->editAgentInstructionsFile = $project->agent_instructions_file;
+        $this->editCacheConfig = (bool) $project->cache_config;
+        $this->showEditForm = true;
+    }
+
+    public function updateProject(): void
+    {
+        $this->validate([
+            'editRepo' => ['required', 'string', 'unique:projects,repo,'.$this->editingProjectId],
+            'editPath' => ['required', 'string'],
+        ], [
+            'editRepo.unique' => 'This repository is already registered.',
+        ]);
+
+        if (! File::isDirectory($this->editPath)) {
+            $this->addError('editPath', 'The path does not exist on disk.');
+
+            return;
+        }
+
+        $project = Project::findOrFail($this->editingProjectId);
+        $project->update([
+            'repo' => $this->editRepo,
+            'path' => $this->editPath,
+            'agent_name' => $this->editAgentName,
+            'agent_executor' => $this->editAgentExecutor,
+            'agent_provider' => $this->editAgentProvider,
+            'agent_model' => $this->editAgentModel,
+            'agent_instructions_file' => $this->editAgentInstructionsFile,
+            'cache_config' => $this->editCacheConfig,
+        ]);
+
+        $this->reset('showEditForm', 'editingProjectId');
+        $this->dispatch('project-updated');
+    }
 
     public function addProject(): void
     {
@@ -74,7 +152,7 @@ new #[Title('Projects')] class extends Component {
     }
 }; ?>
 
-<section class="w-full max-w-4xl">
+<section class="w-full">
     <div class="flex items-center justify-between mb-6">
         <div>
             <flux:heading size="xl">{{ __('Projects') }}</flux:heading>
@@ -124,6 +202,86 @@ new #[Title('Projects')] class extends Component {
         </form>
     </flux:modal>
 
+    {{-- Edit Project Form --}}
+    <flux:modal wire:model="showEditForm" class="md:w-2xl">
+        <form wire:submit="updateProject">
+            <flux:heading size="lg">{{ __('Edit Project') }}</flux:heading>
+            <flux:text class="mt-1">{{ __('Update repository settings and agent configuration.') }}</flux:text>
+
+            <div class="mt-6 space-y-4">
+                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <flux:field>
+                        <flux:label>{{ __('Repository') }}</flux:label>
+                        <flux:input wire:model="editRepo" placeholder="owner/repo" required />
+                        <flux:error name="editRepo" />
+                    </flux:field>
+
+                    <flux:field>
+                        <flux:label>{{ __('Local Path') }}</flux:label>
+                        <flux:input wire:model="editPath" placeholder="/path/to/repo" required />
+                        <flux:error name="editPath" />
+                    </flux:field>
+                </div>
+
+                <flux:separator />
+
+                <flux:heading size="sm">{{ __('Agent Defaults') }}</flux:heading>
+
+                <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    <flux:field>
+                        <flux:label>{{ __('Agent Name') }}</flux:label>
+                        <flux:input wire:model="editAgentName" placeholder="e.g. sparky" />
+                    </flux:field>
+
+                    <flux:field>
+                        <flux:label>{{ __('Executor') }}</flux:label>
+                        <flux:select wire:model="editAgentExecutor">
+                            <flux:select.option value="">{{ __('None') }}</flux:select.option>
+                            <flux:select.option value="laravel-ai">{{ __('Laravel AI') }}</flux:select.option>
+                            <flux:select.option value="claude-cli">{{ __('Claude CLI') }}</flux:select.option>
+                        </flux:select>
+                    </flux:field>
+
+                    <flux:field>
+                        <flux:label>{{ __('Instructions File') }}</flux:label>
+                        <flux:input wire:model="editAgentInstructionsFile" placeholder="e.g. SPARKY.md" />
+                    </flux:field>
+                </div>
+
+                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <flux:field>
+                        <flux:label>{{ __('Provider') }}</flux:label>
+                        <flux:select wire:model.live="editAgentProvider">
+                            <flux:select.option value="">{{ __('None') }}</flux:select.option>
+                            @foreach ($this->getProviders() as $key => $provider)
+                                <flux:select.option value="{{ $key }}">{{ $provider['label'] }}</flux:select.option>
+                            @endforeach
+                        </flux:select>
+                    </flux:field>
+
+                    <flux:field>
+                        <flux:label>{{ __('Model') }}</flux:label>
+                        <flux:select wire:model="editAgentModel" :disabled="! $editAgentProvider">
+                            <flux:select.option value="">{{ $editAgentProvider ? __('Select a model') : __('Select a provider first') }}</flux:select.option>
+                            @foreach ($this->getModelsForProvider($editAgentProvider) as $key => $label)
+                                <flux:select.option value="{{ $key }}">{{ $label }}</flux:select.option>
+                            @endforeach
+                        </flux:select>
+                    </flux:field>
+                </div>
+
+                <flux:field>
+                    <flux:switch wire:model="editCacheConfig" label="{{ __('Cache Config') }}" description="{{ __('Cache parsed dispatch.yml for this project.') }}" />
+                </flux:field>
+            </div>
+
+            <div class="mt-6 flex justify-end gap-2">
+                <flux:button variant="ghost" wire:click="$set('showEditForm', false)">{{ __('Cancel') }}</flux:button>
+                <flux:button variant="primary" type="submit">{{ __('Save Changes') }}</flux:button>
+            </div>
+        </form>
+    </flux:modal>
+
     {{-- Projects List --}}
     @php $projects = \App\Models\Project::orderBy('repo')->get(); @endphp
 
@@ -139,13 +297,18 @@ new #[Title('Projects')] class extends Component {
                 <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 p-4" wire:key="project-{{ $project->id }}">
                     <div class="flex items-start justify-between gap-4">
                         <div class="min-w-0 flex-1">
-                            <flux:heading size="sm">{{ $project->repo }}</flux:heading>
+                            <a href="{{ route('projects.show', $project) }}" wire:navigate class="hover:underline">
+                                <flux:heading size="sm">{{ $project->repo }}</flux:heading>
+                            </a>
                             <flux:text class="mt-1 truncate font-mono text-xs">{{ $project->path }}</flux:text>
                         </div>
 
                         <div class="flex items-center gap-1">
                             <flux:button variant="ghost" size="sm" icon="bolt" :href="route('rules.index', $project)" wire:navigate>
                                 {{ __('Rules') }}
+                            </flux:button>
+                            <flux:button variant="ghost" size="sm" icon="pencil-square" wire:click="editProject({{ $project->id }})">
+                                {{ __('Edit') }}
                             </flux:button>
                             <flux:button variant="ghost" size="sm" icon="arrow-down-tray" wire:click="importConfig({{ $project->id }})" wire:loading.attr="disabled">
                                 {{ __('Import') }}

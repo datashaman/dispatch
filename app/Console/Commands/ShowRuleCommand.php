@@ -39,7 +39,7 @@ class ShowRuleCommand extends Command
         $this->info("Rule: {$rule->rule_id}");
         $this->line("  Name:          {$rule->name}");
         $this->line("  Event:         {$rule->event}");
-        $this->line('  Circuit Break: '.($rule->circuit_break ? 'Yes' : 'No'));
+        $this->line('  Continue on Error: '.($rule->continue_on_error ? 'Yes' : 'No'));
         $this->line("  Sort Order:    {$rule->sort_order}");
         $this->line("  Prompt:        {$rule->prompt}");
 

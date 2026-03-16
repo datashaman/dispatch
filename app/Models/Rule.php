@@ -19,7 +19,7 @@ class Rule extends Model
         'rule_id',
         'name',
         'event',
-        'circuit_break',
+        'continue_on_error',
         'prompt',
         'sort_order',
     ];
@@ -27,7 +27,7 @@ class Rule extends Model
     protected function casts(): array
     {
         return [
-            'circuit_break' => 'boolean',
+            'continue_on_error' => 'boolean',
             'sort_order' => 'integer',
         ];
     }

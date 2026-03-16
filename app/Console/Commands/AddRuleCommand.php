@@ -13,7 +13,7 @@ class AddRuleCommand extends Command
         {event : Webhook event type (e.g. issues.labeled)}
         {--name= : Human-readable name for the rule}
         {--prompt= : Prompt template for the agent}
-        {--circuit-break : Enable circuit breaking}
+        {--continue-on-error : Continue processing remaining rules even if this one fails}
         {--sort-order=0 : Sort order for rule execution}';
 
     protected $description = 'Add a new rule to a project';
@@ -43,7 +43,7 @@ class AddRuleCommand extends Command
             'name' => $this->option('name') ?? $ruleId,
             'event' => $event,
             'prompt' => $this->option('prompt') ?? '',
-            'circuit_break' => $this->option('circuit-break'),
+            'continue_on_error' => $this->option('continue-on-error'),
             'sort_order' => (int) $this->option('sort-order'),
         ]);
 

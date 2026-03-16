@@ -35,8 +35,8 @@ test('lists rules ordered by sort_order', function () {
     Volt::test('pages::rules.index', ['project' => $this->project->id])
         ->assertSee('first-rule')
         ->assertSee('second-rule')
-        ->assertSee('issues.labeled')
-        ->assertSee('issues.opened');
+        ->assertSee('an issue is labeled')
+        ->assertSee('an issue is opened');
 });
 
 test('shows empty state when no rules exist', function () {
@@ -47,14 +47,14 @@ test('shows empty state when no rules exist', function () {
 test('can create a new rule', function () {
     Volt::test('pages::rules.index', ['project' => $this->project->id])
         ->call('openAddRule')
-        ->set('ruleId', 'analyze')
         ->set('ruleName', 'Analyze Issues')
+        ->assertSet('ruleId', 'analyze-issues')
         ->set('ruleEvent', 'issues.labeled')
         ->set('rulePrompt', 'Analyze issue #{{ event.issue.number }}')
         ->set('ruleSortOrder', 1)
         ->call('saveRule');
 
-    $rule = Rule::where('rule_id', 'analyze')->first();
+    $rule = Rule::where('rule_id', 'analyze-issues')->first();
     expect($rule)->not->toBeNull();
     expect($rule->name)->toBe('Analyze Issues');
     expect($rule->event)->toBe('issues.labeled');
@@ -110,16 +110,16 @@ test('can delete a rule', function () {
     expect(Rule::find($rule->id))->toBeNull();
 });
 
-test('shows circuit break badge', function () {
+test('shows continue on error badge', function () {
     Rule::factory()->create([
         'project_id' => $this->project->id,
         'rule_id' => 'breaker',
         'event' => 'issues.labeled',
-        'circuit_break' => true,
+        'continue_on_error' => true,
     ]);
 
     Volt::test('pages::rules.index', ['project' => $this->project->id])
-        ->assertSee('Circuit Break');
+        ->assertSee('Continue on error');
 });
 
 // --- Filter tests ---

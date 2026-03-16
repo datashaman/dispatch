@@ -40,7 +40,7 @@ class SeedDefaultsCommand extends Command
                 'name' => $def['name'],
                 'event' => $def['event'],
                 'prompt' => $def['prompt'],
-                'circuit_break' => $def['circuit_break'] ?? false,
+                'continue_on_error' => $def['continue_on_error'] ?? false,
                 'sort_order' => $sortOrder++,
             ]);
 
@@ -102,7 +102,7 @@ Provide a detailed analysis of the issue, including:
 2. Potential root causes
 3. Suggested approach for resolution
 PROMPT,
-                'circuit_break' => false,
+                'continue_on_error' => false,
                 'filters' => [
                     [
                         'filter_id' => 'label-sparky',
@@ -132,7 +132,7 @@ Comment by {{ event.comment.user.login }}:
 
 Provide a helpful and informative response.
 PROMPT,
-                'circuit_break' => false,
+                'continue_on_error' => false,
                 'filters' => [
                     [
                         'filter_id' => 'mentions-sparky',
@@ -163,7 +163,7 @@ Comment by {{ event.comment.user.login }}:
 Read the issue context, understand the request, and implement the changes.
 Create a new branch, make the changes, and commit them.
 PROMPT,
-                'circuit_break' => false,
+                'continue_on_error' => false,
                 'filters' => [
                     [
                         'filter_id' => 'mentions-sparky-implement',
@@ -193,7 +193,7 @@ Comment by {{ event.comment.user.login }}:
 
 Provide a helpful response. You can read the codebase and run commands to gather information.
 PROMPT,
-                'circuit_break' => false,
+                'continue_on_error' => false,
                 'filters' => [
                     [
                         'filter_id' => 'mentions-sparky',
@@ -231,7 +231,7 @@ Line: {{ event.comment.line }}
 
 Provide a helpful review response, analyzing the code in context.
 PROMPT,
-                'circuit_break' => false,
+                'continue_on_error' => false,
                 'filters' => [
                     [
                         'filter_id' => 'mentions-sparky',

@@ -24,15 +24,15 @@ class AgentDispatcher
     public function dispatch(WebhookLog $webhookLog, Collection $matchedRules, array $payload): array
     {
         $results = [];
-        $circuitBroken = false;
+        $haltPipeline = false;
 
         foreach ($matchedRules as $rule) {
-            if ($circuitBroken) {
+            if ($haltPipeline) {
                 $agentRun = AgentRun::create([
                     'webhook_log_id' => $webhookLog->id,
                     'rule_id' => $rule->rule_id,
                     'status' => 'skipped',
-                    'error' => 'Skipped due to circuit breaker from a previous rule failure',
+                    'error' => 'Skipped due to a previous rule failure',
                     'created_at' => now(),
                 ]);
 
@@ -40,7 +40,7 @@ class AgentDispatcher
                     'rule' => $rule->rule_id,
                     'name' => $rule->name,
                     'status' => 'skipped',
-                    'reason' => 'circuit_break',
+                    'reason' => 'previous_failure',
                     'agent_run_id' => $agentRun->id,
                 ];
 
@@ -63,12 +63,11 @@ class AgentDispatcher
                 'agent_run_id' => $agentRun->id,
             ];
 
-            // If this rule has circuit_break enabled, mark for potential breaking
-            // The actual circuit break happens when the job fails (handled in ProcessAgentRun)
-            // For synchronous processing (sync queue driver in tests), check if the run already failed
+            // If this rule has continue_on_error disabled and fails, stop processing remaining rules.
+            // For synchronous processing (sync queue driver in tests), check if the run already failed.
             $agentRun->refresh();
-            if ($rule->circuit_break && $agentRun->status === 'failed') {
-                $circuitBroken = true;
+            if (! $rule->continue_on_error && $agentRun->status === 'failed') {
+                $haltPipeline = true;
                 $results[array_key_last($results)]['status'] = 'failed';
             }
         }

@@ -47,7 +47,7 @@ rules:
   - id: "analyze"
     name: "Analyze Issue"
     event: "issues.labeled"
-    circuit_break: false
+    continue_on_error: false
     filters:
       - id: "filter-1"
         field: "event.label.name"
@@ -104,7 +104,7 @@ it('parses rule fields correctly', function () {
         ->id->toBe('analyze')
         ->name->toBe('Analyze Issue')
         ->event->toBe('issues.labeled')
-        ->circuitBreak->toBeFalse()
+        ->continueOnError->toBeFalse()
         ->prompt->toContain('Analyze issue')
         ->filters->toHaveCount(1);
 });
@@ -345,7 +345,7 @@ YAML);
     expect($rule)
         ->id->toBe('simple')
         ->name->toBeNull()
-        ->circuitBreak->toBeFalse()
+        ->continueOnError->toBeFalse()
         ->filters->toBe([])
         ->agent->toBeNull()
         ->output->toBeNull()

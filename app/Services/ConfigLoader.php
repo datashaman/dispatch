@@ -150,7 +150,7 @@ class ConfigLoader
             event: $ruleData['event'],
             prompt: $ruleData['prompt'],
             name: $ruleData['name'] ?? null,
-            circuitBreak: (bool) ($ruleData['circuit_break'] ?? false),
+            continueOnError: (bool) ($ruleData['continue_on_error'] ?? false),
             sortOrder: (int) ($ruleData['sort_order'] ?? $index),
             filters: $filters,
             agent: isset($ruleData['agent']) ? $this->parseAgentConfig($ruleData['agent']) : null,

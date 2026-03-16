@@ -27,7 +27,7 @@ describe('dispatch:add-rule', function () {
             'event' => 'issues.labeled',
             'name' => 'analyze',
             'prompt' => '',
-            'circuit_break' => false,
+            'continue_on_error' => false,
             'sort_order' => 0,
         ]);
     });
@@ -41,7 +41,7 @@ describe('dispatch:add-rule', function () {
             'event' => 'pull_request.opened',
             '--name' => 'Code Review',
             '--prompt' => 'Review this PR: {{ event.pull_request.title }}',
-            '--circuit-break' => true,
+            '--continue-on-error' => true,
             '--sort-order' => '5',
         ])
             ->expectsOutput("Rule 'review' added to project 'owner/repo'.")
@@ -52,7 +52,7 @@ describe('dispatch:add-rule', function () {
             'name' => 'Code Review',
             'event' => 'pull_request.opened',
             'prompt' => 'Review this PR: {{ event.pull_request.title }}',
-            'circuit_break' => true,
+            'continue_on_error' => true,
             'sort_order' => 5,
         ]);
     });
@@ -90,7 +90,7 @@ describe('dispatch:update-rule', function () {
             'name' => 'Old Name',
             'event' => 'issues.labeled',
             'prompt' => 'Old prompt',
-            'circuit_break' => false,
+            'continue_on_error' => false,
             'sort_order' => 0,
         ]);
 
@@ -100,7 +100,7 @@ describe('dispatch:update-rule', function () {
             '--name' => 'New Name',
             '--event' => 'issues.opened',
             '--prompt' => 'New prompt',
-            '--circuit-break' => 'true',
+            '--continue-on-error' => 'true',
             '--sort-order' => '10',
         ])
             ->expectsOutput("Rule 'analyze' updated for project 'owner/repo'.")
@@ -111,7 +111,7 @@ describe('dispatch:update-rule', function () {
             'name' => 'New Name',
             'event' => 'issues.opened',
             'prompt' => 'New prompt',
-            'circuit_break' => true,
+            'continue_on_error' => true,
             'sort_order' => 10,
         ]);
     });
@@ -262,7 +262,7 @@ describe('dispatch:list-rules', function () {
             'rule_id' => 'review',
             'name' => 'Code Review',
             'event' => 'pull_request.opened',
-            'circuit_break' => true,
+            'continue_on_error' => true,
             'sort_order' => 2,
         ]);
         Rule::factory()->create([
@@ -270,13 +270,13 @@ describe('dispatch:list-rules', function () {
             'rule_id' => 'analyze',
             'name' => 'Analyze Issue',
             'event' => 'issues.labeled',
-            'circuit_break' => false,
+            'continue_on_error' => false,
             'sort_order' => 1,
         ]);
 
         $this->artisan('dispatch:list-rules', ['repo' => 'owner/repo'])
             ->expectsTable(
-                ['Rule ID', 'Name', 'Event', 'Circuit Break', 'Sort Order'],
+                ['Rule ID', 'Name', 'Event', 'Continue on Error', 'Sort Order'],
                 [
                     ['analyze', 'Analyze Issue', 'issues.labeled', 'No', 1],
                     ['review', 'Code Review', 'pull_request.opened', 'Yes', 2],

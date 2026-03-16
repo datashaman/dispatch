@@ -66,7 +66,7 @@ class ConfigSyncer
                 event: $rule->event,
                 prompt: $rule->prompt,
                 name: $rule->name,
-                circuitBreak: $rule->circuit_break,
+                continueOnError: $rule->continue_on_error,
                 sortOrder: $rule->sort_order,
                 filters: $rule->filters->map(fn (Filter $filter) => new FilterConfig(
                     id: $filter->filter_id,
@@ -169,7 +169,7 @@ class ConfigSyncer
                 [
                     'name' => $ruleConfig->name ?? $ruleConfig->id,
                     'event' => $ruleConfig->event,
-                    'circuit_break' => $ruleConfig->circuitBreak,
+                    'continue_on_error' => $ruleConfig->continueOnError,
                     'prompt' => $ruleConfig->prompt,
                     'sort_order' => $ruleConfig->sortOrder,
                 ],
@@ -286,8 +286,8 @@ class ConfigSyncer
             $data['name'] = $rule->name;
         }
 
-        if ($rule->circuitBreak) {
-            $data['circuit_break'] = true;
+        if ($rule->continueOnError) {
+            $data['continue_on_error'] = true;
         }
 
         if ($rule->sortOrder !== 0) {

@@ -608,3 +608,18 @@
   - Cache keys use md5 of normalized path (trailing slash stripped) for consistency
   - The `cache.config` field was already parsed by ConfigLoader and stored in DispatchConfig DTO — just needed the caching logic and DB persistence
 ---
+
+## 2026-03-16 - US-028
+- Implemented `dispatch:seed-defaults {repo}` command that seeds 5 default sparky-nano rules
+- Rules: `analyze` (issues.labeled), `discuss` (discussion_comment.created), `implement` (issue_comment.created, full tools, isolation), `interactive` (issue_comment.created, read-only + bash), `review` (pull_request_review_comment.created)
+- Each rule includes filters, agent config (tools/isolation), output config (log + github_comment + reaction), and prompt templates with `{{ event.* }}` placeholders
+- Skips rules that already exist (with warning), exports to dispatch.yml after seeding
+- 7 tests covering: seeding all rules, filters, agent config, output config, missing project, skip existing rules, YAML export
+- Files changed:
+  - app/Console/Commands/SeedDefaultsCommand.php (new)
+  - tests/Feature/SeedDefaultsTest.php (new)
+- **Learnings for future iterations:**
+  - `FilterOperator::Equals->value` gives the string value for direct DB storage — no need to pass enum instance when creating via model
+  - ConfigSyncer `export()` handles the full export pipeline including cache clearing — just call it after seeding
+  - The `getDefaultRules()` method keeps seed data self-contained in the command — good pattern for seed commands
+---

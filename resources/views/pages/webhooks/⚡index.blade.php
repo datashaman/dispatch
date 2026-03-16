@@ -51,7 +51,7 @@ new #[Title('Webhook Logs')] class extends Component {
     }
 }; ?>
 
-<section class="w-full max-w-6xl">
+<section class="w-full">
     <div class="flex items-center justify-between mb-6">
         <div>
             <flux:heading size="xl">{{ __('Webhook Logs') }}</flux:heading>

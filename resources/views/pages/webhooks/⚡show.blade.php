@@ -46,7 +46,7 @@ new #[Title('Webhook Log Detail')] class extends Component {
     }
 }; ?>
 
-<section class="w-full max-w-6xl" @if ($this->hasInProgressRuns()) wire:poll.5s @endif>
+<section class="w-full" @if ($this->hasInProgressRuns()) wire:poll.5s @endif>
     @php $log = $this->getWebhookLog(); @endphp
 
     @if (! $log)

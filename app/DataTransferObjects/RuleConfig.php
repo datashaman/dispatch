@@ -12,7 +12,7 @@ readonly class RuleConfig
         public string $event,
         public string $prompt,
         public ?string $name = null,
-        public bool $circuitBreak = false,
+        public bool $continueOnError = false,
         public int $sortOrder = 0,
         public array $filters = [],
         public ?AgentConfig $agent = null,
