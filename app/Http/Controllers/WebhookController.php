@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\RuleMatchingException;
 use App\Models\WebhookLog;
+use App\Services\RuleMatchingEngine;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -71,9 +73,41 @@ class WebhookController extends Controller
 
         $webhookLog = $this->logWebhook($eventType, $request, 'received');
 
+        $repo = $request->input('repository.full_name');
+
+        if (! $repo) {
+            $webhookLog->update(['status' => 'error', 'error' => 'Missing repository.full_name in payload']);
+
+            return response()->json([
+                'ok' => false,
+                'error' => 'Missing repository.full_name in payload',
+                'webhook_log_id' => $webhookLog->id,
+            ], 422);
+        }
+
+        $engine = app(RuleMatchingEngine::class);
+
+        try {
+            $matchedRules = $engine->match($repo, $eventType, $request->all());
+        } catch (RuleMatchingException $e) {
+            $webhookLog->update(['status' => 'error', 'error' => $e->getMessage()]);
+
+            return response()->json([
+                'ok' => false,
+                'error' => $e->getMessage(),
+                'webhook_log_id' => $webhookLog->id,
+            ], 422);
+        }
+
+        $webhookLog->update([
+            'matched_rules' => $matchedRules->pluck('rule_id')->toArray(),
+            'status' => 'processed',
+        ]);
+
         return response()->json([
             'ok' => true,
             'event' => $eventType,
+            'matched' => $matchedRules->count(),
             'webhook_log_id' => $webhookLog->id,
         ]);
     }

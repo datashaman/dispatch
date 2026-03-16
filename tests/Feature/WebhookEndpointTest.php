@@ -1,9 +1,14 @@
 <?php
 
+use App\Models\Project;
 use App\Models\WebhookLog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
+
+beforeEach(function () {
+    Project::factory()->create(['repo' => 'owner/repo']);
+});
 
 function webhookPayload(array $overrides = []): array
 {
@@ -102,7 +107,7 @@ it('logs every incoming webhook to webhook_logs table', function (): void {
     $log = WebhookLog::first();
     expect($log->event_type)->toBe('issues.labeled')
         ->and($log->repo)->toBe('owner/repo')
-        ->and($log->status)->toBe('received')
+        ->and($log->status)->toBe('processed')
         ->and($log->payload)->toBeArray()
         ->and($log->payload['action'])->toBe('labeled');
 });
@@ -238,8 +243,13 @@ it('handles webhooks without repository info', function (): void {
         'X-GitHub-Event' => 'check_suite',
     ]);
 
-    $response->assertOk();
+    $response->assertStatus(422)
+        ->assertJson([
+            'ok' => false,
+            'error' => 'Missing repository.full_name in payload',
+        ]);
 
     $log = WebhookLog::first();
-    expect($log->repo)->toBeNull();
+    expect($log->repo)->toBeNull()
+        ->and($log->status)->toBe('error');
 });

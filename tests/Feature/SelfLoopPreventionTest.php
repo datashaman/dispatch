@@ -1,9 +1,14 @@
 <?php
 
+use App\Models\Project;
 use App\Models\WebhookLog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
+
+beforeEach(function () {
+    Project::factory()->create(['repo' => 'owner/repo']);
+});
 
 function selfLoopPayload(string $senderLogin = 'dispatch-bot', array $overrides = []): array
 {
