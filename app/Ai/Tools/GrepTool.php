@@ -23,7 +23,16 @@ class GrepTool implements Tool
     {
         $pattern = $request->string('pattern');
 
-        $args = ['grep', '-rn', '--include='.$request->string('include', '*'), $pattern, '.'];
+        $args = [
+            'grep', '-rn',
+            '--include='.$request->string('include', '*'),
+            '--exclude-dir=node_modules',
+            '--exclude-dir=vendor',
+            '--exclude-dir=.git',
+            '--exclude-dir=.worktrees',
+            '--exclude-dir=storage',
+            $pattern, '.',
+        ];
 
         $result = Process::path($this->workingDirectory)
             ->timeout(30)
