@@ -9,6 +9,10 @@
 - Enum cases use TitleCase (e.g., `NotEquals`, `StartsWith`)
 - All cascade deletes are handled at the migration level with `->cascadeOnDelete()`
 - `WebhookLog` and `AgentRun` use `$timestamps = false` with manual `created_at` only
+- API routes live in `routes/api.php`, registered via `api:` in `bootstrap/app.php` `withRouting()`
+- GitHub webhook config (secret, verify flag) stored in `config/services.php` under `github` key
+- For HMAC signature tests, use `$this->call('POST', ...)` with raw JSON body (not `postJson()` which re-encodes)
+- Tests hitting `/api/webhook` need: `config(['services.github.verify_webhook_signature' => false])` and a `Project::factory()->create()` for the repo
 - Artisan commands use `dispatch:` prefix (e.g., `dispatch:add-project`)
 - DTOs live in `app/DataTransferObjects/` as readonly classes with constructor promotion
 - Custom exceptions live in `app/Exceptions/`
@@ -177,4 +181,129 @@
   - `phpunit.xml` overrides QUEUE_CONNECTION to `sync` for tests — don't test `config('queue.default')` directly, test the config file structure instead
   - Pint auto-fixes `fully_qualified_strict_types` in test files — always run before committing
   - ProcessAgentRun job uses `$this->onQueue('agents')` in constructor for default queue assignment
+---
+
+## 2026-03-16 - US-010
+- Implemented `POST /api/webhook` endpoint via WebhookController
+- Reads `X-GitHub-Event` header, combines with `payload.action` to form event type (e.g. `issues.labeled`)
+- Verifies `X-Hub-Signature-256` against `GITHUB_WEBHOOK_SECRET` via HMAC SHA-256 when `VERIFY_WEBHOOK_SIGNATURE` is true
+- Skips verification when `VERIFY_WEBHOOK_SIGNATURE` is false
+- Returns 401 on signature mismatch or missing signature/secret
+- Handles `ping` event with `{"ok": true, "event": "ping"}` response
+- Logs every incoming webhook to `webhook_logs` table (including errors and pings)
+- Returns descriptive JSON error responses
+- Added migration to make `webhook_logs.repo` nullable (ping events and some events lack repository info)
+- Added GitHub config to `config/services.php` for webhook_secret and verify_webhook_signature
+- Added API routing via `routes/api.php` and `bootstrap/app.php`
+- 13 tests covering: missing headers, ping, event+action combination, event-only, logging, webhook_log_id in response, signature verification, invalid signature, missing signature, skip verification, missing secret, ping logging, no repository info
+- Files changed:
+  - app/Http/Controllers/WebhookController.php (new)
+  - routes/api.php (new)
+  - bootstrap/app.php (modified — added API routing)
+  - config/services.php (modified — added GitHub webhook config)
+  - .env, .env.example (added GITHUB_WEBHOOK_SECRET, VERIFY_WEBHOOK_SIGNATURE)
+  - database/migrations/2026_03_16_065433_make_webhook_logs_repo_nullable.php (new)
+  - tests/Feature/WebhookEndpointTest.php (new)
+- **Learnings for future iterations:**
+  - API routes in Laravel 12 are added via `api:` parameter in `withRouting()` in `bootstrap/app.php`
+  - For HMAC signature verification, use `$this->call('POST', ...)` with raw JSON body and `HTTP_` prefixed headers for precise control over request content
+  - `postJson()` re-encodes the payload, so signature computed on original JSON won't match — use `$this->call()` with raw body for signature tests
+  - `webhook_logs.repo` should be nullable — not all GitHub events include repository info (e.g. ping)
+  - Config values for webhook verification stored in `config/services.php` under `github` key
+---
+
+## 2026-03-16 - US-011
+- Implemented self-loop prevention: webhook events from the bot's own GitHub user are logged but not processed
+- Added `GITHUB_BOT_USERNAME` env var and `config('services.github.bot_username')` config
+- Self-loop check runs after signature verification, before ping/event processing
+- Returns `{"ok": true, "event": "...", "skipped": "self-loop"}` response for self-loop events
+- Events are still logged to `webhook_logs` with error note "Self-loop detected"
+- When `GITHUB_BOT_USERNAME` is not configured, all events are processed normally
+- 5 tests covering: self-loop skip, logging with note, non-matching sender, unconfigured bot username, events without action
+- Files changed:
+  - app/Http/Controllers/WebhookController.php (modified — added `isSelfLoop()` method and self-loop check)
+  - config/services.php (modified — added `bot_username` key)
+  - .env, .env.example (added GITHUB_BOT_USERNAME)
+  - tests/Feature/SelfLoopPreventionTest.php (new)
+- **Learnings for future iterations:**
+  - Self-loop check should be after signature verification but before ping/event processing — ensures security checks still apply to bot events
+  - `.env` is gitignored — only commit `.env.example` changes
+  - Config for GitHub settings all lives under `config('services.github.*')`
+---
+
+## 2026-03-16 - US-012
+- Implemented RuleMatchingEngine service to match incoming webhooks against configured rules
+- Matches rules by exact event type, evaluates all filters with AND logic
+- Supports all 7 filter operators: equals, not_equals, contains, not_contains, starts_with, ends_with, matches (regex)
+- Filter `field` supports dot-path resolution with optional `event.` prefix stripping
+- Missing field paths resolve to empty string (no errors)
+- Integrated matching engine into WebhookController — updates webhook_log with matched_rules and processed status
+- Created RuleMatchingException for missing project error handling
+- Handles missing `repository.full_name` in payload with 422 response
+- 22 tests covering: project not found, event matching, multiple matches in sort_order, no filters, all 7 operators, AND logic, event prefix, nested paths, missing paths, cross-project isolation, controller integration (missing project, matching, no matches), error logging, webhook log updates
+- Updated existing WebhookEndpointTest and SelfLoopPreventionTest to create projects (needed since controller now runs rule matching)
+- Files changed:
+  - app/Services/RuleMatchingEngine.php (new)
+  - app/Exceptions/RuleMatchingException.php (new)
+  - app/Http/Controllers/WebhookController.php (modified — integrated rule matching after webhook logging)
+  - tests/Feature/RuleMatchingEngineTest.php (new)
+  - tests/Feature/WebhookEndpointTest.php (modified — added project creation, updated assertions)
+  - tests/Feature/SelfLoopPreventionTest.php (modified — added project creation)
+- **Learnings for future iterations:**
+  - Adding rule matching to WebhookController changes the response format — existing tests expecting old format need updating
+  - Tests that hit `/api/webhook` now need `Project::factory()->create()` for the repo in the payload
+  - `Illuminate\Support\Arr::get()` is ideal for dot-path resolution against nested arrays
+  - WebhookController integration tests need `config(['services.github.verify_webhook_signature' => false])` to bypass signature verification
+  - Pint auto-fixes `no_unused_imports` — the `Log` import was removed from WebhookController since it wasn't directly used
+---
+
+## 2026-03-16 - US-013
+- Implemented PromptRenderer service to render `{{ event.field.path }}` template syntax against webhook payloads
+- Uses `preg_replace_callback` with regex to find `{{ event.* }}` placeholders
+- Strips the `event.` prefix and resolves remaining dot-path against payload using `Arr::get()`
+- Unresolved paths, null values render as empty string (no errors)
+- Supports nested paths, array index access, numeric/boolean values, multiline templates
+- 15 tests covering: simple paths, multiple placeholders, nested paths, unresolved paths, whitespace in tags, no placeholders, array access, deep nesting, numeric/boolean/null values, multiline, empty template, empty payload
+- Files changed:
+  - app/Services/PromptRenderer.php (new)
+  - tests/Feature/PromptRendererTest.php (new)
+- **Learnings for future iterations:**
+  - `Arr::get()` handles dot-path resolution including numeric array indices (e.g., `labels.0.name`)
+  - `(string)` cast on `Arr::get()` result handles null→empty string conversion cleanly
+  - PromptRenderer is a pure service with no dependencies — can be used standalone or injected
+- Contracts (interfaces) live in `app/Contracts/`, executors in `app/Executors/`, AI agents in `app/Ai/Agents/`
+- Use `DispatchAgent::fake(['response'])` to mock AI agent responses in tests
+- Executor pattern: `app/Contracts/Executor.php` interface, implementations in `app/Executors/`
+- Agent config resolution chain: rule-level (`RuleAgentConfig`) → project-level (`Project.agent_*`) → null
+---
+
+## 2026-03-16 - US-015
+- Implemented Executor interface and LaravelAiExecutor using the Laravel AI SDK (`laravel/ai`)
+- Created `Executor` interface in `app/Contracts/` with `execute(AgentRun, string, array): ExecutionResult` method
+- Created `ExecutionResult` DTO in `app/DataTransferObjects/` for structured execution results (status, output, tokens, cost, duration, error)
+- Created `DispatchAgent` in `app/Ai/Agents/` — a dynamic AI agent implementing `Agent` and `HasTools` with runtime-configurable instructions and tools
+- Created `LaravelAiExecutor` in `app/Executors/` — executes agents via Laravel AI SDK's `prompt()` method with provider/model passthrough
+- Loads system prompt from `instructions_file` relative to project path, falls back to default
+- Updated `ProcessAgentRun` job to use the executor: resolves executor type, renders prompt, resolves agent config with project-level fallback, updates agent_run with execution results
+- Published `config/ai.php` for AI provider configuration
+- Updated existing `AgentDispatchingTest` to use `DispatchAgent::fake()` since the job now executes real agent logic
+- 14 new tests covering: interface contract, DTO success/failure, executor success/failure, instructions file loading, missing file fallback, provider passthrough, job integration with executor, project-level fallback, rule-level override, failure handling, prompt rendering, DispatchAgent interface verification
+- Files changed:
+  - app/Contracts/Executor.php (new)
+  - app/DataTransferObjects/ExecutionResult.php (new)
+  - app/Ai/Agents/DispatchAgent.php (new)
+  - app/Executors/LaravelAiExecutor.php (new)
+  - app/Jobs/ProcessAgentRun.php (modified — integrated executor pattern)
+  - config/ai.php (new — published from laravel/ai)
+  - tests/Feature/ExecutorTest.php (new)
+  - tests/Feature/AgentDispatchingTest.php (modified — added DispatchAgent::fake())
+- **Learnings for future iterations:**
+  - Laravel AI SDK's `Promptable` trait provides `prompt(string, attachments, provider, model)` — provider and model are passed at call time, not via constructor
+  - `DispatchAgent::fake(['response text'])` is the correct way to mock AI agent responses in tests — returns a `FakeTextGateway`
+  - `DispatchAgent::assertPrompted('prompt text')` verifies the exact prompt sent to the agent
+  - The `prompt()` method's `provider` param accepts a string name matching keys in `config/ai.php`'s `providers` array
+  - Executor pattern (`app/Contracts/Executor.php`) allows swapping between `LaravelAiExecutor` and future `ClaudeCliExecutor`
+  - Agent config resolution: rule-level → project-level → null fallback chain, done in `ProcessAgentRun::resolveAgentConfig()`
+  - `hrtime(true)` gives nanoseconds — divide by 1_000_000 for milliseconds for duration tracking
+  - Contracts (interfaces) live in `app/Contracts/`, executors in `app/Executors/`, AI agents in `app/Ai/Agents/`
 ---

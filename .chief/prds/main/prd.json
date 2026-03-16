@@ -193,7 +193,8 @@
         "Tests for matching, non-matching, multiple matches, filter operators, error cases"
       ],
       "priority": 12,
-      "passes": false
+      "passes": true,
+      "inProgress": false
     },
     {
       "id": "US-013",
@@ -207,7 +208,8 @@
         "Tests for various path depths, missing paths, array access"
       ],
       "priority": 13,
-      "passes": false
+      "passes": true,
+      "inProgress": false
     },
     {
       "id": "US-014",
@@ -224,7 +226,8 @@
         "Tests for dispatching, circuit breaking, response format"
       ],
       "priority": 14,
-      "passes": false
+      "passes": true,
+      "inProgress": false
     },
     {
       "id": "US-015",
@@ -242,7 +245,8 @@
         "Tests with mocked AI SDK"
       ],
       "priority": 15,
-      "passes": false
+      "passes": true,
+      "inProgress": false
     },
     {
       "id": "US-016",

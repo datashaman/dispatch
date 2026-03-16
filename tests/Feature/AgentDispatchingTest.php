@@ -1,5 +1,6 @@
 <?php
 
+use App\Ai\Agents\DispatchAgent;
 use App\Jobs\ProcessAgentRun;
 use App\Models\AgentRun;
 use App\Models\Project;
@@ -339,6 +340,8 @@ test('agent_run records are linked to webhook_log', function () {
 });
 
 test('ProcessAgentRun job updates status to running then success', function () {
+    DispatchAgent::fake(['Agent output']);
+
     $webhookLog = WebhookLog::create([
         'event_type' => 'push',
         'repo' => 'owner/repo',
@@ -347,7 +350,11 @@ test('ProcessAgentRun job updates status to running then success', function () {
         'created_at' => now(),
     ]);
 
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
+    $project = Project::factory()->create([
+        'repo' => 'owner/repo',
+        'agent_provider' => 'anthropic',
+        'agent_model' => 'claude-sonnet-4-20250514',
+    ]);
     $rule = Rule::factory()->create([
         'project_id' => $project->id,
         'rule_id' => 'test-rule',
