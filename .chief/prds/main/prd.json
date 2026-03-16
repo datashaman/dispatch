@@ -160,7 +160,8 @@
         "Tests for valid webhooks, invalid signatures, ping events, missing headers"
       ],
       "priority": 10,
-      "passes": false
+      "passes": true,
+      "inProgress": false
     },
     {
       "id": "US-011",
@@ -173,7 +174,8 @@
         "Tests for self-loop detection"
       ],
       "priority": 11,
-      "passes": false
+      "passes": true,
+      "inProgress": false
     },
     {
       "id": "US-012",

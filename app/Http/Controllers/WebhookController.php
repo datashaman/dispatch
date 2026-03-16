@@ -44,6 +44,19 @@ class WebhookController extends Controller
             }
         }
 
+        if ($this->isSelfLoop($request)) {
+            $action = $request->input('action');
+            $eventType = $action ? "{$githubEvent}.{$action}" : $githubEvent;
+
+            $this->logWebhook($eventType, $request, 'received', 'Self-loop detected');
+
+            return response()->json([
+                'ok' => true,
+                'event' => $eventType,
+                'skipped' => 'self-loop',
+            ]);
+        }
+
         if ($githubEvent === 'ping') {
             $this->logWebhook('ping', $request, 'received');
 
@@ -63,6 +76,19 @@ class WebhookController extends Controller
             'event' => $eventType,
             'webhook_log_id' => $webhookLog->id,
         ]);
+    }
+
+    protected function isSelfLoop(Request $request): bool
+    {
+        $botUsername = config('services.github.bot_username');
+
+        if (! $botUsername) {
+            return false;
+        }
+
+        $senderLogin = $request->input('sender.login');
+
+        return $senderLogin === $botUsername;
     }
 
     protected function shouldVerifySignature(): bool
