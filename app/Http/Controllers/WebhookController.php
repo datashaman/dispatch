@@ -4,12 +4,18 @@ namespace App\Http\Controllers;
 
 use App\Exceptions\RuleMatchingException;
 use App\Models\WebhookLog;
+use App\Services\AgentDispatcher;
 use App\Services\RuleMatchingEngine;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class WebhookController extends Controller
 {
+    public function __construct(
+        protected RuleMatchingEngine $engine,
+        protected AgentDispatcher $dispatcher,
+    ) {}
+
     public function handle(Request $request): JsonResponse
     {
         $githubEvent = $request->header('X-GitHub-Event');
@@ -85,10 +91,8 @@ class WebhookController extends Controller
             ], 422);
         }
 
-        $engine = app(RuleMatchingEngine::class);
-
         try {
-            $matchedRules = $engine->match($repo, $eventType, $request->all());
+            $matchedRules = $this->engine->match($repo, $eventType, $request->all());
         } catch (RuleMatchingException $e) {
             $webhookLog->update(['status' => 'error', 'error' => $e->getMessage()]);
 
@@ -104,11 +108,14 @@ class WebhookController extends Controller
             'status' => 'processed',
         ]);
 
+        $results = $this->dispatcher->dispatch($webhookLog, $matchedRules, $request->all());
+
         return response()->json([
             'ok' => true,
             'event' => $eventType,
             'matched' => $matchedRules->count(),
             'webhook_log_id' => $webhookLog->id,
+            'results' => $results,
         ]);
     }
 

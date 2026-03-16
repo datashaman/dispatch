@@ -2,6 +2,8 @@
 
 use App\Jobs\ProcessAgentRun;
 use App\Models\AgentRun;
+use App\Models\Project;
+use App\Models\Rule;
 use App\Models\WebhookLog;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -40,12 +42,14 @@ test('horizon dashboard route is registered', function () {
 test('ProcessAgentRun job dispatches to agents queue', function () {
     Queue::fake();
 
+    $project = Project::factory()->create();
+    $rule = Rule::factory()->create(['project_id' => $project->id]);
     $webhookLog = WebhookLog::factory()->create();
     $agentRun = AgentRun::factory()->create([
         'webhook_log_id' => $webhookLog->id,
     ]);
 
-    ProcessAgentRun::dispatch($agentRun);
+    ProcessAgentRun::dispatch($agentRun, $rule, []);
 
     Queue::assertPushedOn('agents', ProcessAgentRun::class);
 });
@@ -56,12 +60,14 @@ test('ProcessAgentRun job implements ShouldQueue', function () {
 });
 
 test('ProcessAgentRun job is configured on agents queue by default', function () {
+    $project = Project::factory()->create();
+    $rule = Rule::factory()->create(['project_id' => $project->id]);
     $webhookLog = WebhookLog::factory()->create();
     $agentRun = AgentRun::factory()->create([
         'webhook_log_id' => $webhookLog->id,
     ]);
 
-    $job = new ProcessAgentRun($agentRun);
+    $job = new ProcessAgentRun($agentRun, $rule, []);
 
     expect($job->queue)->toBe('agents');
 });
