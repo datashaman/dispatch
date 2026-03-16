@@ -2,22 +2,26 @@
 
 namespace App\Services;
 
+use App\DataTransferObjects\FilterConfig;
+use App\DataTransferObjects\RuleConfig;
 use App\Enums\FilterOperator;
 use App\Exceptions\RuleMatchingException;
-use App\Models\Filter;
 use App\Models\Project;
-use App\Models\Rule;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 
 class RuleMatchingEngine
 {
+    public function __construct(
+        protected ConfigLoader $configLoader,
+    ) {}
+
     /**
      * Match rules for a given repo and event type against the webhook payload.
      *
      * @param  array<string, mixed>  $payload
-     * @return Collection<int, Rule>
+     * @return Collection<int, RuleConfig>
      *
      * @throws RuleMatchingException
      */
@@ -31,15 +35,25 @@ class RuleMatchingEngine
             throw new RuleMatchingException("Project not found for repo '{$repo}'");
         }
 
-        $rules = $project->rules()->with('filters')->where('event', $eventType)->get();
+        if (! $project->path) {
+            throw new RuleMatchingException("Project '{$repo}' has no local path configured");
+        }
+
+        try {
+            $config = $this->configLoader->load($project->path);
+        } catch (\Throwable $e) {
+            throw new RuleMatchingException("Failed to load dispatch.yml for '{$repo}': {$e->getMessage()}");
+        }
+
+        $rules = collect($config->rules)
+            ->filter(fn (RuleConfig $rule) => $rule->event === $eventType);
 
         if ($rules->isEmpty()) {
             return collect();
         }
 
-        return $rules->filter(function (Rule $rule) use ($payload) {
-            return $this->evaluateFilters($rule, $payload);
-        })->values();
+        return $rules->filter(fn (RuleConfig $rule) => $this->evaluateFilters($rule, $payload))
+            ->values();
     }
 
     /**
@@ -47,9 +61,9 @@ class RuleMatchingEngine
      *
      * @param  array<string, mixed>  $payload
      */
-    protected function evaluateFilters(Rule $rule, array $payload): bool
+    protected function evaluateFilters(RuleConfig $rule, array $payload): bool
     {
-        if ($rule->filters->isEmpty()) {
+        if (empty($rule->filters)) {
             return true;
         }
 
@@ -67,7 +81,7 @@ class RuleMatchingEngine
      *
      * @param  array<string, mixed>  $payload
      */
-    protected function evaluateFilter(Filter $filter, array $payload): bool
+    protected function evaluateFilter(FilterConfig $filter, array $payload): bool
     {
         $fieldValue = $this->resolveFieldPath($filter->field, $payload);
 
@@ -82,7 +96,6 @@ class RuleMatchingEngine
      */
     protected function resolveFieldPath(string $field, array $payload): mixed
     {
-        // Strip "event." prefix if present
         if (str_starts_with($field, 'event.')) {
             $field = substr($field, 6);
         }

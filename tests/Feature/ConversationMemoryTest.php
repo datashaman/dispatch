@@ -1,12 +1,13 @@
 <?php
 
 use App\Ai\Agents\DispatchAgent;
+use App\DataTransferObjects\DispatchConfig;
+use App\DataTransferObjects\RuleConfig;
 use App\Executors\ClaudeCliExecutor;
 use App\Executors\LaravelAiExecutor;
 use App\Jobs\ProcessAgentRun;
 use App\Models\AgentRun;
 use App\Models\Project;
-use App\Models\Rule;
 use App\Models\WebhookLog;
 use App\Services\ConversationMemory;
 use Illuminate\Support\Facades\Process;
@@ -432,12 +433,19 @@ test('ProcessAgentRun loads conversation history from prior runs', function () {
         'agent_model' => 'claude-sonnet-4-20250514',
     ]);
 
-    $rule = Rule::factory()->create([
-        'project_id' => $project->id,
-        'rule_id' => 'analyze',
-        'event' => 'issue_comment.created',
-        'prompt' => 'Respond to: {{ event.comment.body }}',
-    ]);
+    $dispatchConfig = new DispatchConfig(
+        version: 1,
+        agentName: 'test',
+        agentExecutor: 'laravel-ai',
+        agentProvider: 'anthropic',
+        agentModel: 'claude-sonnet-4-20250514',
+    );
+
+    $ruleConfig = new RuleConfig(
+        id: 'analyze',
+        event: 'issue_comment.created',
+        prompt: 'Respond to: {{ event.comment.body }}',
+    );
 
     // Create a prior successful run on the same issue
     $priorWebhookLog = WebhookLog::create([
@@ -486,7 +494,7 @@ test('ProcessAgentRun loads conversation history from prior runs', function () {
         'comment' => ['body' => 'Follow-up question'],
     ];
 
-    $job = new ProcessAgentRun($currentRun, $rule, $payload);
+    $job = new ProcessAgentRun($currentRun, $ruleConfig, $payload, $project, $dispatchConfig);
     $job->handle();
 
     $currentRun->refresh();
@@ -504,12 +512,19 @@ test('ProcessAgentRun works when no prior conversation exists', function () {
         'agent_model' => 'claude-sonnet-4-20250514',
     ]);
 
-    $rule = Rule::factory()->create([
-        'project_id' => $project->id,
-        'rule_id' => 'analyze',
-        'event' => 'issues.opened',
-        'prompt' => 'Analyze issue',
-    ]);
+    $dispatchConfig = new DispatchConfig(
+        version: 1,
+        agentName: 'test',
+        agentExecutor: 'laravel-ai',
+        agentProvider: 'anthropic',
+        agentModel: 'claude-sonnet-4-20250514',
+    );
+
+    $ruleConfig = new RuleConfig(
+        id: 'analyze',
+        event: 'issues.opened',
+        prompt: 'Analyze issue',
+    );
 
     $webhookLog = WebhookLog::create([
         'event_type' => 'issues.opened',
@@ -534,7 +549,7 @@ test('ProcessAgentRun works when no prior conversation exists', function () {
         'issue' => ['number' => 1],
     ];
 
-    $job = new ProcessAgentRun($agentRun, $rule, $payload);
+    $job = new ProcessAgentRun($agentRun, $ruleConfig, $payload, $project, $dispatchConfig);
     $job->handle();
 
     $agentRun->refresh();
@@ -551,12 +566,19 @@ test('ProcessAgentRun works with payloads without thread scope', function () {
         'agent_model' => 'claude-sonnet-4-20250514',
     ]);
 
-    $rule = Rule::factory()->create([
-        'project_id' => $project->id,
-        'rule_id' => 'analyze',
-        'event' => 'push',
-        'prompt' => 'Analyze push',
-    ]);
+    $dispatchConfig = new DispatchConfig(
+        version: 1,
+        agentName: 'test',
+        agentExecutor: 'laravel-ai',
+        agentProvider: 'anthropic',
+        agentModel: 'claude-sonnet-4-20250514',
+    );
+
+    $ruleConfig = new RuleConfig(
+        id: 'analyze',
+        event: 'push',
+        prompt: 'Analyze push',
+    );
 
     $webhookLog = WebhookLog::create([
         'event_type' => 'push',
@@ -575,7 +597,7 @@ test('ProcessAgentRun works with payloads without thread scope', function () {
 
     $payload = ['ref' => 'refs/heads/main'];
 
-    $job = new ProcessAgentRun($agentRun, $rule, $payload);
+    $job = new ProcessAgentRun($agentRun, $ruleConfig, $payload, $project, $dispatchConfig);
     $job->handle();
 
     $agentRun->refresh();

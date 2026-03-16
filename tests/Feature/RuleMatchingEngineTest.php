@@ -1,26 +1,53 @@
 <?php
 
-use App\Enums\FilterOperator;
 use App\Exceptions\RuleMatchingException;
-use App\Models\Filter;
 use App\Models\Project;
-use App\Models\Rule;
 use App\Models\WebhookLog;
 use App\Services\RuleMatchingEngine;
 use Illuminate\Support\Facades\Log;
+use Symfony\Component\Yaml\Yaml;
 
 beforeEach(function () {
-    $this->engine = new RuleMatchingEngine;
+    $this->engine = app(RuleMatchingEngine::class);
     config(['services.github.verify_webhook_signature' => false]);
+
+    $this->tempDir = sys_get_temp_dir().'/dispatch-rule-test-'.uniqid();
+    mkdir($this->tempDir);
 });
+
+afterEach(function () {
+    $configFile = $this->tempDir.'/dispatch.yml';
+    if (file_exists($configFile)) {
+        unlink($configFile);
+    }
+    if (is_dir($this->tempDir)) {
+        rmdir($this->tempDir);
+    }
+});
+
+function writeDispatchYaml(string $dir, array $rules, array $agentOverrides = []): void
+{
+    $config = array_merge([
+        'version' => 1,
+        'agent' => array_merge([
+            'name' => 'test',
+            'executor' => 'laravel-ai',
+        ], $agentOverrides),
+        'rules' => $rules,
+    ]);
+
+    file_put_contents($dir.'/dispatch.yml', Yaml::dump($config, 10, 2));
+}
 
 it('throws exception when project not found', function () {
     $this->engine->match('nonexistent/repo', 'issues.labeled', []);
 })->throws(RuleMatchingException::class, "Project not found for repo 'nonexistent/repo'");
 
 it('returns empty collection when no rules match event type', function () {
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-    Rule::factory()->create(['project_id' => $project->id, 'event' => 'push']);
+    writeDispatchYaml($this->tempDir, [
+        ['id' => 'push-rule', 'event' => 'push', 'prompt' => 'Handle push'],
+    ]);
+    Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $result = $this->engine->match('owner/repo', 'issues.labeled', []);
 
@@ -28,48 +55,36 @@ it('returns empty collection when no rules match event type', function () {
 });
 
 it('matches rule by exact event type', function () {
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-    Rule::factory()->create([
-        'project_id' => $project->id,
-        'event' => 'issues.labeled',
-        'rule_id' => 'analyze',
+    writeDispatchYaml($this->tempDir, [
+        ['id' => 'analyze', 'event' => 'issues.labeled', 'prompt' => 'Analyze'],
     ]);
+    Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $result = $this->engine->match('owner/repo', 'issues.labeled', []);
 
     expect($result)->toHaveCount(1)
-        ->and($result->first()->rule_id)->toBe('analyze');
+        ->and($result->first()->id)->toBe('analyze');
 });
 
 it('returns multiple matching rules in sort_order', function () {
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-    Rule::factory()->create([
-        'project_id' => $project->id,
-        'event' => 'issues.labeled',
-        'rule_id' => 'second',
-        'sort_order' => 2,
+    writeDispatchYaml($this->tempDir, [
+        ['id' => 'second', 'event' => 'issues.labeled', 'prompt' => 'Second', 'sort_order' => 2],
+        ['id' => 'first', 'event' => 'issues.labeled', 'prompt' => 'First', 'sort_order' => 1],
     ]);
-    Rule::factory()->create([
-        'project_id' => $project->id,
-        'event' => 'issues.labeled',
-        'rule_id' => 'first',
-        'sort_order' => 1,
-    ]);
+    Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $result = $this->engine->match('owner/repo', 'issues.labeled', []);
 
     expect($result)->toHaveCount(2)
-        ->and($result[0]->rule_id)->toBe('first')
-        ->and($result[1]->rule_id)->toBe('second');
+        ->and($result[0]->id)->toBe('second')
+        ->and($result[1]->id)->toBe('first');
 });
 
 it('matches rule with no filters', function () {
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-    Rule::factory()->create([
-        'project_id' => $project->id,
-        'event' => 'push',
-        'rule_id' => 'no-filters',
+    writeDispatchYaml($this->tempDir, [
+        ['id' => 'no-filters', 'event' => 'push', 'prompt' => 'Handle push'],
     ]);
+    Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $result = $this->engine->match('owner/repo', 'push', []);
 
@@ -77,18 +92,17 @@ it('matches rule with no filters', function () {
 });
 
 it('filters using equals operator', function () {
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-    $rule = Rule::factory()->create([
-        'project_id' => $project->id,
-        'event' => 'issues.labeled',
-        'rule_id' => 'labeled',
+    writeDispatchYaml($this->tempDir, [
+        [
+            'id' => 'labeled',
+            'event' => 'issues.labeled',
+            'prompt' => 'Handle label',
+            'filters' => [
+                ['id' => 'f1', 'field' => 'label.name', 'operator' => 'equals', 'value' => 'sparky'],
+            ],
+        ],
     ]);
-    Filter::factory()->create([
-        'rule_id' => $rule->id,
-        'field' => 'label.name',
-        'operator' => FilterOperator::Equals,
-        'value' => 'sparky',
-    ]);
+    Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $match = $this->engine->match('owner/repo', 'issues.labeled', ['label' => ['name' => 'sparky']]);
     $noMatch = $this->engine->match('owner/repo', 'issues.labeled', ['label' => ['name' => 'other']]);
@@ -98,18 +112,17 @@ it('filters using equals operator', function () {
 });
 
 it('filters using not_equals operator', function () {
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-    $rule = Rule::factory()->create([
-        'project_id' => $project->id,
-        'event' => 'issues.labeled',
-        'rule_id' => 'not-bug',
+    writeDispatchYaml($this->tempDir, [
+        [
+            'id' => 'not-bug',
+            'event' => 'issues.labeled',
+            'prompt' => 'Not a bug',
+            'filters' => [
+                ['id' => 'f1', 'field' => 'label.name', 'operator' => 'not_equals', 'value' => 'bug'],
+            ],
+        ],
     ]);
-    Filter::factory()->create([
-        'rule_id' => $rule->id,
-        'field' => 'label.name',
-        'operator' => FilterOperator::NotEquals,
-        'value' => 'bug',
-    ]);
+    Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $match = $this->engine->match('owner/repo', 'issues.labeled', ['label' => ['name' => 'feature']]);
     $noMatch = $this->engine->match('owner/repo', 'issues.labeled', ['label' => ['name' => 'bug']]);
@@ -119,18 +132,17 @@ it('filters using not_equals operator', function () {
 });
 
 it('filters using contains operator', function () {
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-    $rule = Rule::factory()->create([
-        'project_id' => $project->id,
-        'event' => 'issue_comment.created',
-        'rule_id' => 'mention',
+    writeDispatchYaml($this->tempDir, [
+        [
+            'id' => 'mention',
+            'event' => 'issue_comment.created',
+            'prompt' => 'Mentioned',
+            'filters' => [
+                ['id' => 'f1', 'field' => 'comment.body', 'operator' => 'contains', 'value' => '@sparky'],
+            ],
+        ],
     ]);
-    Filter::factory()->create([
-        'rule_id' => $rule->id,
-        'field' => 'comment.body',
-        'operator' => FilterOperator::Contains,
-        'value' => '@sparky',
-    ]);
+    Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $match = $this->engine->match('owner/repo', 'issue_comment.created', ['comment' => ['body' => 'Hey @sparky please review']]);
     $noMatch = $this->engine->match('owner/repo', 'issue_comment.created', ['comment' => ['body' => 'Just a comment']]);
@@ -140,18 +152,17 @@ it('filters using contains operator', function () {
 });
 
 it('filters using not_contains operator', function () {
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-    $rule = Rule::factory()->create([
-        'project_id' => $project->id,
-        'event' => 'issue_comment.created',
-        'rule_id' => 'no-skip',
+    writeDispatchYaml($this->tempDir, [
+        [
+            'id' => 'no-skip',
+            'event' => 'issue_comment.created',
+            'prompt' => 'No skip',
+            'filters' => [
+                ['id' => 'f1', 'field' => 'comment.body', 'operator' => 'not_contains', 'value' => '[skip]'],
+            ],
+        ],
     ]);
-    Filter::factory()->create([
-        'rule_id' => $rule->id,
-        'field' => 'comment.body',
-        'operator' => FilterOperator::NotContains,
-        'value' => '[skip]',
-    ]);
+    Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $match = $this->engine->match('owner/repo', 'issue_comment.created', ['comment' => ['body' => 'Normal comment']]);
     $noMatch = $this->engine->match('owner/repo', 'issue_comment.created', ['comment' => ['body' => 'Comment [skip] this']]);
@@ -161,18 +172,17 @@ it('filters using not_contains operator', function () {
 });
 
 it('filters using starts_with operator', function () {
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-    $rule = Rule::factory()->create([
-        'project_id' => $project->id,
-        'event' => 'issue_comment.created',
-        'rule_id' => 'command',
+    writeDispatchYaml($this->tempDir, [
+        [
+            'id' => 'command',
+            'event' => 'issue_comment.created',
+            'prompt' => 'Command',
+            'filters' => [
+                ['id' => 'f1', 'field' => 'comment.body', 'operator' => 'starts_with', 'value' => '/deploy'],
+            ],
+        ],
     ]);
-    Filter::factory()->create([
-        'rule_id' => $rule->id,
-        'field' => 'comment.body',
-        'operator' => FilterOperator::StartsWith,
-        'value' => '/deploy',
-    ]);
+    Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $match = $this->engine->match('owner/repo', 'issue_comment.created', ['comment' => ['body' => '/deploy production']]);
     $noMatch = $this->engine->match('owner/repo', 'issue_comment.created', ['comment' => ['body' => 'Please /deploy']]);
@@ -182,18 +192,17 @@ it('filters using starts_with operator', function () {
 });
 
 it('filters using ends_with operator', function () {
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-    $rule = Rule::factory()->create([
-        'project_id' => $project->id,
-        'event' => 'issues.labeled',
-        'rule_id' => 'priority',
+    writeDispatchYaml($this->tempDir, [
+        [
+            'id' => 'priority',
+            'event' => 'issues.labeled',
+            'prompt' => 'Priority',
+            'filters' => [
+                ['id' => 'f1', 'field' => 'label.name', 'operator' => 'ends_with', 'value' => '-priority'],
+            ],
+        ],
     ]);
-    Filter::factory()->create([
-        'rule_id' => $rule->id,
-        'field' => 'label.name',
-        'operator' => FilterOperator::EndsWith,
-        'value' => '-priority',
-    ]);
+    Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $match = $this->engine->match('owner/repo', 'issues.labeled', ['label' => ['name' => 'high-priority']]);
     $noMatch = $this->engine->match('owner/repo', 'issues.labeled', ['label' => ['name' => 'priority-low']]);
@@ -203,18 +212,17 @@ it('filters using ends_with operator', function () {
 });
 
 it('filters using matches (regex) operator', function () {
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-    $rule = Rule::factory()->create([
-        'project_id' => $project->id,
-        'event' => 'issue_comment.created',
-        'rule_id' => 'version',
+    writeDispatchYaml($this->tempDir, [
+        [
+            'id' => 'version',
+            'event' => 'issue_comment.created',
+            'prompt' => 'Version',
+            'filters' => [
+                ['id' => 'f1', 'field' => 'comment.body', 'operator' => 'matches', 'value' => '/^v\d+\.\d+\.\d+$/'],
+            ],
+        ],
     ]);
-    Filter::factory()->create([
-        'rule_id' => $rule->id,
-        'field' => 'comment.body',
-        'operator' => FilterOperator::Matches,
-        'value' => '/^v\d+\.\d+\.\d+$/',
-    ]);
+    Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $match = $this->engine->match('owner/repo', 'issue_comment.created', ['comment' => ['body' => 'v1.2.3']]);
     $noMatch = $this->engine->match('owner/repo', 'issue_comment.created', ['comment' => ['body' => 'version 1.2.3']]);
@@ -224,24 +232,18 @@ it('filters using matches (regex) operator', function () {
 });
 
 it('requires all filters to pass (AND logic)', function () {
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-    $rule = Rule::factory()->create([
-        'project_id' => $project->id,
-        'event' => 'issue_comment.created',
-        'rule_id' => 'implement',
+    writeDispatchYaml($this->tempDir, [
+        [
+            'id' => 'implement',
+            'event' => 'issue_comment.created',
+            'prompt' => 'Implement',
+            'filters' => [
+                ['id' => 'f1', 'field' => 'comment.body', 'operator' => 'contains', 'value' => '@sparky'],
+                ['id' => 'f2', 'field' => 'comment.body', 'operator' => 'contains', 'value' => 'implement'],
+            ],
+        ],
     ]);
-    Filter::factory()->create([
-        'rule_id' => $rule->id,
-        'field' => 'comment.body',
-        'operator' => FilterOperator::Contains,
-        'value' => '@sparky',
-    ]);
-    Filter::factory()->create([
-        'rule_id' => $rule->id,
-        'field' => 'comment.body',
-        'operator' => FilterOperator::Contains,
-        'value' => 'implement',
-    ]);
+    Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $match = $this->engine->match('owner/repo', 'issue_comment.created', ['comment' => ['body' => '@sparky implement this']]);
     $partialMatch = $this->engine->match('owner/repo', 'issue_comment.created', ['comment' => ['body' => '@sparky review this']]);
@@ -251,18 +253,17 @@ it('requires all filters to pass (AND logic)', function () {
 });
 
 it('resolves dot-path fields with event prefix', function () {
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-    $rule = Rule::factory()->create([
-        'project_id' => $project->id,
-        'event' => 'issues.labeled',
-        'rule_id' => 'with-prefix',
+    writeDispatchYaml($this->tempDir, [
+        [
+            'id' => 'with-prefix',
+            'event' => 'issues.labeled',
+            'prompt' => 'With prefix',
+            'filters' => [
+                ['id' => 'f1', 'field' => 'event.label.name', 'operator' => 'equals', 'value' => 'sparky'],
+            ],
+        ],
     ]);
-    Filter::factory()->create([
-        'rule_id' => $rule->id,
-        'field' => 'event.label.name',
-        'operator' => FilterOperator::Equals,
-        'value' => 'sparky',
-    ]);
+    Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $result = $this->engine->match('owner/repo', 'issues.labeled', ['label' => ['name' => 'sparky']]);
 
@@ -270,18 +271,17 @@ it('resolves dot-path fields with event prefix', function () {
 });
 
 it('resolves deeply nested dot-path fields', function () {
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-    $rule = Rule::factory()->create([
-        'project_id' => $project->id,
-        'event' => 'issues.opened',
-        'rule_id' => 'nested',
+    writeDispatchYaml($this->tempDir, [
+        [
+            'id' => 'nested',
+            'event' => 'issues.opened',
+            'prompt' => 'Nested',
+            'filters' => [
+                ['id' => 'f1', 'field' => 'issue.user.login', 'operator' => 'equals', 'value' => 'octocat'],
+            ],
+        ],
     ]);
-    Filter::factory()->create([
-        'rule_id' => $rule->id,
-        'field' => 'issue.user.login',
-        'operator' => FilterOperator::Equals,
-        'value' => 'octocat',
-    ]);
+    Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $result = $this->engine->match('owner/repo', 'issues.opened', ['issue' => ['user' => ['login' => 'octocat']]]);
 
@@ -289,18 +289,17 @@ it('resolves deeply nested dot-path fields', function () {
 });
 
 it('treats missing field path as empty string', function () {
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-    Rule::factory()->create([
-        'project_id' => $project->id,
-        'event' => 'push',
-        'rule_id' => 'missing-field',
+    writeDispatchYaml($this->tempDir, [
+        [
+            'id' => 'missing-field',
+            'event' => 'push',
+            'prompt' => 'Missing field',
+            'filters' => [
+                ['id' => 'f1', 'field' => 'nonexistent.path', 'operator' => 'equals', 'value' => 'something'],
+            ],
+        ],
     ]);
-    Filter::factory()->create([
-        'rule_id' => Rule::where('rule_id', 'missing-field')->first()->id,
-        'field' => 'nonexistent.path',
-        'operator' => FilterOperator::Equals,
-        'value' => 'something',
-    ]);
+    Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $result = $this->engine->match('owner/repo', 'push', ['other' => 'data']);
 
@@ -308,17 +307,29 @@ it('treats missing field path as empty string', function () {
 });
 
 it('does not match rules from other projects', function () {
-    Project::factory()->create(['repo' => 'owner/repo1']);
-    $project2 = Project::factory()->create(['repo' => 'owner/repo2']);
-    Rule::factory()->create([
-        'project_id' => $project2->id,
-        'event' => 'push',
-        'rule_id' => 'other-project',
-    ]);
+    $tempDir2 = sys_get_temp_dir().'/dispatch-rule-test2-'.uniqid();
+    mkdir($tempDir2);
 
-    $result = $this->engine->match('owner/repo1', 'push', []);
+    try {
+        // repo1 has no rules for push
+        writeDispatchYaml($this->tempDir, [
+            ['id' => 'not-push', 'event' => 'issues.labeled', 'prompt' => 'Not push'],
+        ]);
+        Project::factory()->create(['repo' => 'owner/repo1', 'path' => $this->tempDir]);
 
-    expect($result)->toBeEmpty();
+        // repo2 has a push rule
+        writeDispatchYaml($tempDir2, [
+            ['id' => 'other-project', 'event' => 'push', 'prompt' => 'Other project'],
+        ]);
+        Project::factory()->create(['repo' => 'owner/repo2', 'path' => $tempDir2]);
+
+        $result = $this->engine->match('owner/repo1', 'push', []);
+
+        expect($result)->toBeEmpty();
+    } finally {
+        @unlink($tempDir2.'/dispatch.yml');
+        @rmdir($tempDir2);
+    }
 });
 
 it('integrates with webhook controller for missing project', function () {
@@ -340,12 +351,10 @@ it('integrates with webhook controller for missing project', function () {
 });
 
 it('integrates with webhook controller for matching rules', function () {
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-    Rule::factory()->create([
-        'project_id' => $project->id,
-        'event' => 'issues.labeled',
-        'rule_id' => 'analyze',
+    writeDispatchYaml($this->tempDir, [
+        ['id' => 'analyze', 'event' => 'issues.labeled', 'prompt' => 'Analyze'],
     ]);
+    Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $payload = [
         'action' => 'labeled',
@@ -366,7 +375,10 @@ it('integrates with webhook controller for matching rules', function () {
 });
 
 it('integrates with webhook controller for no matching rules', function () {
-    Project::factory()->create(['repo' => 'owner/repo']);
+    writeDispatchYaml($this->tempDir, [
+        ['id' => 'push-only', 'event' => 'push', 'prompt' => 'Push only'],
+    ]);
+    Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $payload = [
         'action' => 'opened',
@@ -395,12 +407,10 @@ it('logs error when project not found', function () {
 });
 
 it('updates webhook log with matched rules and processed status', function () {
-    $project = Project::factory()->create(['repo' => 'owner/repo']);
-    Rule::factory()->create([
-        'project_id' => $project->id,
-        'event' => 'issues.labeled',
-        'rule_id' => 'analyze',
+    writeDispatchYaml($this->tempDir, [
+        ['id' => 'analyze', 'event' => 'issues.labeled', 'prompt' => 'Analyze'],
     ]);
+    Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
 
     $payload = [
         'action' => 'labeled',

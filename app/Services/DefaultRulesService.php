@@ -2,208 +2,206 @@
 
 namespace App\Services;
 
+use App\DataTransferObjects\AgentConfig;
+use App\DataTransferObjects\DispatchConfig;
+use App\DataTransferObjects\FilterConfig;
+use App\DataTransferObjects\OutputConfig;
+use App\DataTransferObjects\RuleConfig;
 use App\Enums\FilterOperator;
 use App\Models\Project;
 
 class DefaultRulesService
 {
+    public function __construct(
+        protected ConfigWriter $configWriter,
+    ) {}
+
     /**
-     * Seed the default set of dispatch rules for a project.
-     *
-     * @return int Number of rules created.
+     * Seed a default dispatch.yml for a project (only if one doesn't already exist).
      */
-    public function seed(Project $project): int
+    public function seed(Project $project): bool
     {
-        $rules = $this->getDefaultRules();
-        $created = 0;
+        $dispatchYml = rtrim($project->path, '/').'/dispatch.yml';
 
-        foreach ($rules as $sortOrder => $def) {
-            if ($project->rules()->where('rule_id', $def['rule_id'])->exists()) {
-                continue;
-            }
-
-            $rule = $project->rules()->create([
-                'rule_id' => $def['rule_id'],
-                'name' => $def['name'],
-                'event' => $def['event'],
-                'prompt' => $def['prompt'],
-                'continue_on_error' => false,
-                'sort_order' => $sortOrder,
-            ]);
-
-            $rule->agentConfig()->create([
-                'tools' => $def['agent']['tools'],
-                'isolation' => $def['agent']['isolation'] ?? false,
-            ]);
-
-            $rule->outputConfig()->create([
-                'log' => true,
-                'github_comment' => $def['output']['github_comment'] ?? true,
-                'github_reaction' => $def['output']['github_reaction'] ?? null,
-            ]);
-
-            foreach ($def['filters'] as $index => $filter) {
-                $rule->filters()->create([
-                    'filter_id' => $filter['filter_id'],
-                    'field' => $filter['field'],
-                    'operator' => $filter['operator'],
-                    'value' => $filter['value'],
-                    'sort_order' => $index,
-                ]);
-            }
-
-            $created++;
+        if (file_exists($dispatchYml)) {
+            return false;
         }
 
-        return $created;
+        $config = $this->buildDefaultConfig($project);
+        $this->configWriter->write($config, $project->path);
+
+        return true;
     }
 
     /**
-     * @return list<array<string, mixed>>
+     * Build the default DispatchConfig for a project.
+     */
+    protected function buildDefaultConfig(Project $project): DispatchConfig
+    {
+        $agentName = basename($project->repo);
+
+        return new DispatchConfig(
+            version: 1,
+            agentName: $agentName,
+            agentExecutor: 'laravel-ai',
+            agentInstructionsFile: 'AGENTS.md',
+            agentProvider: 'anthropic',
+            agentModel: 'claude-sonnet-4-6',
+            secrets: ['api_key' => 'ANTHROPIC_API_KEY'],
+            cacheConfig: true,
+            rules: $this->getDefaultRules(),
+        );
+    }
+
+    /**
+     * @return list<RuleConfig>
      */
     protected function getDefaultRules(): array
     {
         return [
-            [
-                'rule_id' => 'analyze',
-                'name' => 'Analyze Issue',
-                'event' => 'issues.labeled',
-                'prompt' => <<<'PROMPT'
-                    You are triaging issue #{{ event.issue.number }}.
-
-                    Title: {{ event.issue.title }}
-                    Body:
-                    {{ event.issue.body }}
-
-                    Analyze the issue and produce a detailed plan. Consider:
-                    1. What files and components are likely involved
-                    2. What changes are needed
-                    3. Potential risks or edge cases
-                    4. A step-by-step implementation plan
-
-                    Write your analysis as a well-structured markdown document.
-                    PROMPT,
-                'filters' => [
-                    [
-                        'filter_id' => 'label-dispatch',
-                        'field' => 'event.label.name',
-                        'operator' => FilterOperator::Equals,
-                        'value' => 'dispatch',
-                    ],
+            new RuleConfig(
+                id: 'analyze',
+                event: 'issues.labeled',
+                prompt: implode("\n", [
+                    'You are triaging issue #{{ event.issue.number }}.',
+                    '',
+                    'Title: {{ event.issue.title }}',
+                    'Body:',
+                    '{{ event.issue.body }}',
+                    '',
+                    'Analyze the issue and produce a detailed plan. Consider:',
+                    '1. What files and components are likely involved',
+                    '2. What changes are needed',
+                    '3. Potential risks or edge cases',
+                    '4. A step-by-step implementation plan',
+                    '',
+                    'Write your analysis as a well-structured markdown document.',
+                ]),
+                name: 'Analyze Issue',
+                filters: [
+                    new FilterConfig(
+                        id: 'label-dispatch',
+                        field: 'event.label.name',
+                        operator: FilterOperator::Equals,
+                        value: 'dispatch',
+                    ),
                 ],
-                'agent' => [
-                    'tools' => ['Read', 'Glob', 'Grep', 'Bash'],
+                agent: new AgentConfig(
+                    tools: ['Read', 'Glob', 'Grep', 'Bash'],
+                ),
+                output: new OutputConfig(
+                    githubComment: true,
+                    githubReaction: 'eyes',
+                ),
+            ),
+            new RuleConfig(
+                id: 'implement',
+                event: 'issue_comment.created',
+                prompt: implode("\n", [
+                    'You are implementing the approved plan for issue #{{ event.issue.number }}.',
+                    '',
+                    'Issue title: {{ event.issue.title }}',
+                    'Issue body:',
+                    '{{ event.issue.body }}',
+                    '',
+                    'Trigger comment by {{ event.comment.user.login }}:',
+                    '{{ event.comment.body }}',
+                    '',
+                    'Read the issue and prior comments for the analysis and plan.',
+                    'Implement the changes, commit them, and create a pull request.',
+                    'Use `gh` CLI for GitHub operations (creating PRs, posting comments).',
+                ]),
+                name: 'Implement Plan',
+                sortOrder: 1,
+                filters: [
+                    new FilterConfig(
+                        id: 'dispatch-implement',
+                        field: 'event.comment.body',
+                        operator: FilterOperator::Contains,
+                        value: '@dispatch implement',
+                    ),
                 ],
-                'output' => [
-                    'github_comment' => true,
-                    'github_reaction' => 'eyes',
+                agent: new AgentConfig(
+                    tools: ['Read', 'Edit', 'Write', 'Bash', 'Glob', 'Grep'],
+                    isolation: true,
+                ),
+                output: new OutputConfig(
+                    githubComment: true,
+                    githubReaction: 'rocket',
+                ),
+            ),
+            new RuleConfig(
+                id: 'interactive',
+                event: 'issue_comment.created',
+                prompt: implode("\n", [
+                    'You are responding to a question or comment on issue #{{ event.issue.number }}.',
+                    '',
+                    'Issue title: {{ event.issue.title }}',
+                    'Issue body:',
+                    '{{ event.issue.body }}',
+                    '',
+                    'Comment by {{ event.comment.user.login }}:',
+                    '{{ event.comment.body }}',
+                    '',
+                    'Respond helpfully. You can read the codebase to answer questions.',
+                ]),
+                name: 'Interactive Q&A',
+                sortOrder: 2,
+                filters: [
+                    new FilterConfig(
+                        id: 'mentions-dispatch',
+                        field: 'event.comment.body',
+                        operator: FilterOperator::Contains,
+                        value: '@dispatch',
+                    ),
+                    new FilterConfig(
+                        id: 'not-implement',
+                        field: 'event.comment.body',
+                        operator: FilterOperator::NotContains,
+                        value: '@dispatch implement',
+                    ),
                 ],
-            ],
-            [
-                'rule_id' => 'implement',
-                'name' => 'Implement Plan',
-                'event' => 'issue_comment.created',
-                'prompt' => <<<'PROMPT'
-                    You are implementing the approved plan for issue #{{ event.issue.number }}.
-
-                    Issue title: {{ event.issue.title }}
-                    Issue body:
-                    {{ event.issue.body }}
-
-                    Trigger comment by {{ event.comment.user.login }}:
-                    {{ event.comment.body }}
-
-                    Read the issue and prior comments for the analysis and plan.
-                    Implement the changes, commit them, and create a pull request.
-                    Use `gh` CLI for GitHub operations (creating PRs, posting comments).
-                    PROMPT,
-                'filters' => [
-                    [
-                        'filter_id' => 'dispatch-implement',
-                        'field' => 'event.comment.body',
-                        'operator' => FilterOperator::Contains,
-                        'value' => '@dispatch implement',
-                    ],
+                agent: new AgentConfig(
+                    tools: ['Read', 'Glob', 'Grep', 'Bash'],
+                ),
+                output: new OutputConfig(
+                    githubComment: true,
+                ),
+            ),
+            new RuleConfig(
+                id: 'review',
+                event: 'pull_request_review_comment.created',
+                prompt: implode("\n", [
+                    'You are responding to a PR review comment.',
+                    '',
+                    'PR: #{{ event.pull_request.number }} — {{ event.pull_request.title }}',
+                    '',
+                    'Review comment by {{ event.comment.user.login }}:',
+                    '{{ event.comment.body }}',
+                    '',
+                    'File: {{ event.comment.path }}',
+                    'Diff hunk:',
+                    '{{ event.comment.diff_hunk }}',
+                    '',
+                    'Respond to the review feedback. You can read the codebase for context.',
+                ]),
+                name: 'Code Review Responder',
+                sortOrder: 3,
+                filters: [
+                    new FilterConfig(
+                        id: 'mentions-dispatch',
+                        field: 'event.comment.body',
+                        operator: FilterOperator::Contains,
+                        value: '@dispatch',
+                    ),
                 ],
-                'agent' => [
-                    'tools' => ['Read', 'Edit', 'Write', 'Bash', 'Glob', 'Grep'],
-                    'isolation' => true,
-                ],
-                'output' => [
-                    'github_comment' => true,
-                    'github_reaction' => 'rocket',
-                ],
-            ],
-            [
-                'rule_id' => 'interactive',
-                'name' => 'Interactive Q&A',
-                'event' => 'issue_comment.created',
-                'prompt' => <<<'PROMPT'
-                    You are responding to a question or comment on issue #{{ event.issue.number }}.
-
-                    Issue title: {{ event.issue.title }}
-                    Issue body:
-                    {{ event.issue.body }}
-
-                    Comment by {{ event.comment.user.login }}:
-                    {{ event.comment.body }}
-
-                    Respond helpfully. You can read the codebase to answer questions.
-                    PROMPT,
-                'filters' => [
-                    [
-                        'filter_id' => 'mentions-dispatch',
-                        'field' => 'event.comment.body',
-                        'operator' => FilterOperator::Contains,
-                        'value' => '@dispatch',
-                    ],
-                    [
-                        'filter_id' => 'not-implement',
-                        'field' => 'event.comment.body',
-                        'operator' => FilterOperator::NotContains,
-                        'value' => '@dispatch implement',
-                    ],
-                ],
-                'agent' => [
-                    'tools' => ['Read', 'Glob', 'Grep', 'Bash'],
-                ],
-                'output' => [
-                    'github_comment' => true,
-                ],
-            ],
-            [
-                'rule_id' => 'review',
-                'name' => 'Code Review Responder',
-                'event' => 'pull_request_review_comment.created',
-                'prompt' => <<<'PROMPT'
-                    You are responding to a PR review comment.
-
-                    PR: #{{ event.pull_request.number }} — {{ event.pull_request.title }}
-
-                    Review comment by {{ event.comment.user.login }}:
-                    {{ event.comment.body }}
-
-                    File: {{ event.comment.path }}
-                    Diff hunk:
-                    {{ event.comment.diff_hunk }}
-
-                    Respond to the review feedback. You can read the codebase for context.
-                    PROMPT,
-                'filters' => [
-                    [
-                        'filter_id' => 'mentions-dispatch',
-                        'field' => 'event.comment.body',
-                        'operator' => FilterOperator::Contains,
-                        'value' => '@dispatch',
-                    ],
-                ],
-                'agent' => [
-                    'tools' => ['Read', 'Glob', 'Grep', 'Bash'],
-                ],
-                'output' => [
-                    'github_comment' => true,
-                ],
-            ],
+                agent: new AgentConfig(
+                    tools: ['Read', 'Glob', 'Grep', 'Bash'],
+                ),
+                output: new OutputConfig(
+                    githubComment: true,
+                ),
+            ),
         ];
     }
 }

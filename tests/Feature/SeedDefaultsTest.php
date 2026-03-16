@@ -1,13 +1,13 @@
 <?php
 
 use App\Models\Project;
-use App\Models\Rule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Symfony\Component\Yaml\Yaml;
 
 uses(RefreshDatabase::class);
 
 describe('dispatch:seed-defaults', function () {
-    it('seeds 4 default rules for a project', function () {
+    it('creates dispatch.yml with default rules for a project', function () {
         $tempDir = sys_get_temp_dir().'/'.uniqid('dispatch_seed_');
         mkdir($tempDir, 0755, true);
 
@@ -19,19 +19,42 @@ describe('dispatch:seed-defaults', function () {
         $this->artisan('dispatch:seed-defaults', ['repo' => 'owner/repo'])
             ->assertSuccessful();
 
-        expect($project->rules()->count())->toBe(4);
-
-        $rules = $project->rules()->orderBy('sort_order')->get();
-        expect($rules[0]->rule_id)->toBe('analyze');
-        expect($rules[0]->event)->toBe('issues.labeled');
-        expect($rules[1]->rule_id)->toBe('implement');
-        expect($rules[1]->event)->toBe('issue_comment.created');
-        expect($rules[2]->rule_id)->toBe('interactive');
-        expect($rules[2]->event)->toBe('issue_comment.created');
-        expect($rules[3]->rule_id)->toBe('review');
-        expect($rules[3]->event)->toBe('pull_request_review_comment.created');
-
         expect(file_exists($tempDir.'/dispatch.yml'))->toBeTrue();
+
+        $yamlContent = file_get_contents($tempDir.'/dispatch.yml');
+        $data = Yaml::parse($yamlContent);
+
+        expect($data['rules'])->toHaveCount(4);
+
+        $ruleIds = array_column($data['rules'], 'id');
+        expect($ruleIds)->toContain('analyze')
+            ->toContain('implement')
+            ->toContain('interactive')
+            ->toContain('review');
+
+        @unlink($tempDir.'/dispatch.yml');
+        @rmdir($tempDir);
+    });
+
+    it('creates correct events for each rule', function () {
+        $tempDir = sys_get_temp_dir().'/'.uniqid('dispatch_seed_');
+        mkdir($tempDir, 0755, true);
+
+        $project = Project::factory()->create([
+            'repo' => 'owner/repo',
+            'path' => $tempDir,
+        ]);
+
+        $this->artisan('dispatch:seed-defaults', ['repo' => 'owner/repo'])
+            ->assertSuccessful();
+
+        $data = Yaml::parseFile($tempDir.'/dispatch.yml');
+        $rules = collect($data['rules'])->keyBy('id');
+
+        expect($rules['analyze']['event'])->toBe('issues.labeled');
+        expect($rules['implement']['event'])->toBe('issue_comment.created');
+        expect($rules['interactive']['event'])->toBe('issue_comment.created');
+        expect($rules['review']['event'])->toBe('pull_request_review_comment.created');
 
         @unlink($tempDir.'/dispatch.yml');
         @rmdir($tempDir);
@@ -49,19 +72,19 @@ describe('dispatch:seed-defaults', function () {
         $this->artisan('dispatch:seed-defaults', ['repo' => 'owner/repo'])
             ->assertSuccessful();
 
+        $data = Yaml::parseFile($tempDir.'/dispatch.yml');
+        $rules = collect($data['rules'])->keyBy('id');
+
         // analyze: 1 filter (label = dispatch)
-        $analyze = $project->rules()->where('rule_id', 'analyze')->first();
-        expect($analyze->filters()->count())->toBe(1);
-        expect($analyze->filters()->first()->field)->toBe('event.label.name');
-        expect($analyze->filters()->first()->value)->toBe('dispatch');
+        expect($rules['analyze']['filters'])->toHaveCount(1);
+        expect($rules['analyze']['filters'][0]['field'])->toBe('event.label.name');
+        expect($rules['analyze']['filters'][0]['value'])->toBe('dispatch');
 
         // interactive: 2 filters (contains @dispatch AND not_contains @dispatch implement)
-        $interactive = $project->rules()->where('rule_id', 'interactive')->first();
-        expect($interactive->filters()->count())->toBe(2);
+        expect($rules['interactive']['filters'])->toHaveCount(2);
 
         // implement: isolation should be true
-        $implement = $project->rules()->where('rule_id', 'implement')->first();
-        expect($implement->agentConfig->isolation)->toBeTrue();
+        expect($rules['implement']['agent']['isolation'])->toBeTrue();
 
         @unlink($tempDir.'/dispatch.yml');
         @rmdir($tempDir);
@@ -79,15 +102,15 @@ describe('dispatch:seed-defaults', function () {
         $this->artisan('dispatch:seed-defaults', ['repo' => 'owner/repo'])
             ->assertSuccessful();
 
+        $data = Yaml::parseFile($tempDir.'/dispatch.yml');
+        $rules = collect($data['rules'])->keyBy('id');
+
         // analyze: read + bash tools
-        $analyze = $project->rules()->where('rule_id', 'analyze')->first();
-        expect($analyze->agentConfig->tools)->toBe(['Read', 'Glob', 'Grep', 'Bash']);
-        expect($analyze->agentConfig->isolation)->toBeFalse();
+        expect($rules['analyze']['agent']['tools'])->toBe(['Read', 'Glob', 'Grep', 'Bash']);
 
         // implement: full tools, isolation on
-        $implement = $project->rules()->where('rule_id', 'implement')->first();
-        expect($implement->agentConfig->tools)->toBe(['Read', 'Edit', 'Write', 'Bash', 'Glob', 'Grep']);
-        expect($implement->agentConfig->isolation)->toBeTrue();
+        expect($rules['implement']['agent']['tools'])->toBe(['Read', 'Edit', 'Write', 'Bash', 'Glob', 'Grep']);
+        expect($rules['implement']['agent']['isolation'])->toBeTrue();
 
         @unlink($tempDir.'/dispatch.yml');
         @rmdir($tempDir);
@@ -105,13 +128,14 @@ describe('dispatch:seed-defaults', function () {
         $this->artisan('dispatch:seed-defaults', ['repo' => 'owner/repo'])
             ->assertSuccessful();
 
-        $analyze = $project->rules()->where('rule_id', 'analyze')->first();
-        expect($analyze->outputConfig->log)->toBeTrue();
-        expect($analyze->outputConfig->github_comment)->toBeTrue();
-        expect($analyze->outputConfig->github_reaction)->toBe('eyes');
+        $data = Yaml::parseFile($tempDir.'/dispatch.yml');
+        $rules = collect($data['rules'])->keyBy('id');
 
-        $implement = $project->rules()->where('rule_id', 'implement')->first();
-        expect($implement->outputConfig->github_reaction)->toBe('rocket');
+        expect($rules['analyze']['output']['log'])->toBeTrue();
+        expect($rules['analyze']['output']['github_comment'])->toBeTrue();
+        expect($rules['analyze']['output']['github_reaction'])->toBe('eyes');
+
+        expect($rules['implement']['output']['github_reaction'])->toBe('rocket');
 
         @unlink($tempDir.'/dispatch.yml');
         @rmdir($tempDir);
@@ -123,7 +147,7 @@ describe('dispatch:seed-defaults', function () {
             ->assertFailed();
     });
 
-    it('skips rules that already exist', function () {
+    it('does not overwrite existing dispatch.yml', function () {
         $tempDir = sys_get_temp_dir().'/'.uniqid('dispatch_seed_');
         mkdir($tempDir, 0755, true);
 
@@ -132,30 +156,21 @@ describe('dispatch:seed-defaults', function () {
             'path' => $tempDir,
         ]);
 
-        // Pre-create the analyze rule
-        $project->rules()->create([
-            'rule_id' => 'analyze',
-            'name' => 'Existing Analyze',
-            'event' => 'issues.labeled',
-            'prompt' => 'existing prompt',
-            'sort_order' => 0,
-        ]);
+        // Pre-create a dispatch.yml
+        $existingContent = "---\nversion: 1\nagent:\n  name: existing\n  executor: laravel-ai\nrules: []\n";
+        file_put_contents($tempDir.'/dispatch.yml', $existingContent);
 
         $this->artisan('dispatch:seed-defaults', ['repo' => 'owner/repo'])
             ->assertSuccessful();
 
-        // Should have 4 rules total (1 existing + 3 new)
-        expect($project->rules()->count())->toBe(4);
-
-        // Existing rule should not be modified
-        $analyze = $project->rules()->where('rule_id', 'analyze')->first();
-        expect($analyze->name)->toBe('Existing Analyze');
+        // File should not be overwritten
+        expect(file_get_contents($tempDir.'/dispatch.yml'))->toBe($existingContent);
 
         @unlink($tempDir.'/dispatch.yml');
         @rmdir($tempDir);
     });
 
-    it('exports seeded rules to dispatch.yml', function () {
+    it('contains all expected rule names in dispatch.yml', function () {
         $tempDir = sys_get_temp_dir().'/'.uniqid('dispatch_seed_');
         mkdir($tempDir, 0755, true);
 

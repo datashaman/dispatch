@@ -1,12 +1,13 @@
 <?php
 
 use App\Contracts\Executor;
+use App\DataTransferObjects\DispatchConfig;
 use App\DataTransferObjects\ExecutionResult;
+use App\DataTransferObjects\RuleConfig;
 use App\Executors\ClaudeCliExecutor;
 use App\Jobs\ProcessAgentRun;
 use App\Models\AgentRun;
 use App\Models\Project;
-use App\Models\Rule;
 use App\Models\WebhookLog;
 use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\Process;
@@ -380,12 +381,19 @@ test('ProcessAgentRun job resolves ClaudeCliExecutor when executor is claude-cli
         'agent_model' => 'claude-sonnet-4-20250514',
     ]);
 
-    $rule = Rule::factory()->create([
-        'project_id' => $project->id,
-        'rule_id' => 'test-rule',
-        'event' => 'push',
-        'prompt' => 'Analyze this code',
-    ]);
+    $dispatchConfig = new DispatchConfig(
+        version: 1,
+        agentName: 'test',
+        agentExecutor: 'claude-cli',
+        agentProvider: 'anthropic',
+        agentModel: 'claude-sonnet-4-20250514',
+    );
+
+    $ruleConfig = new RuleConfig(
+        id: 'test-rule',
+        event: 'push',
+        prompt: 'Analyze this code',
+    );
 
     $webhookLog = WebhookLog::create([
         'event_type' => 'push',
@@ -402,7 +410,7 @@ test('ProcessAgentRun job resolves ClaudeCliExecutor when executor is claude-cli
         'created_at' => now(),
     ]);
 
-    $job = new ProcessAgentRun($agentRun, $rule, []);
+    $job = new ProcessAgentRun($agentRun, $ruleConfig, [], $project, $dispatchConfig);
     $job->handle();
 
     $agentRun->refresh();

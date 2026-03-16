@@ -158,19 +158,6 @@ new #[Title('Projects')] class extends Component {
         }
     }
 
-    public function exportConfig(int $id): void
-    {
-        $project = Project::findOrFail($id);
-        $this->statusMessage = '';
-        $this->errorMessage = '';
-
-        try {
-            app(ConfigSyncer::class)->export($project);
-            $this->statusMessage = "Config exported for {$project->repo}.";
-        } catch (\Throwable $e) {
-            $this->errorMessage = "Export failed: {$e->getMessage()}";
-        }
-    }
 }; ?>
 
 <section class="w-full">
@@ -334,9 +321,6 @@ new #[Title('Projects')] class extends Component {
                             </flux:button>
                             <flux:button variant="ghost" size="sm" icon="arrow-down-tray" wire:click="importConfig({{ $project->id }})" wire:loading.attr="disabled">
                                 {{ __('Import') }}
-                            </flux:button>
-                            <flux:button variant="ghost" size="sm" icon="arrow-up-tray" wire:click="exportConfig({{ $project->id }})" wire:loading.attr="disabled">
-                                {{ __('Export') }}
                             </flux:button>
 
                             @if ($confirmingDelete === $project->id)

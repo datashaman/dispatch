@@ -3,11 +3,26 @@
 use App\Models\Project;
 use App\Models\WebhookLog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\File;
+use Symfony\Component\Yaml\Yaml;
 
 uses(RefreshDatabase::class);
 
 beforeEach(function () {
-    Project::factory()->create(['repo' => 'owner/repo']);
+    $this->tempDir = sys_get_temp_dir().'/'.uniqid('webhook-test-');
+    File::makeDirectory($this->tempDir, 0755, true);
+
+    file_put_contents($this->tempDir.'/dispatch.yml', Yaml::dump([
+        'version' => 1,
+        'agent' => ['name' => 'test', 'executor' => 'laravel-ai'],
+        'rules' => [],
+    ]));
+
+    Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
+});
+
+afterEach(function () {
+    File::deleteDirectory($this->tempDir);
 });
 
 function webhookPayload(array $overrides = []): array

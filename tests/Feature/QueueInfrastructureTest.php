@@ -1,9 +1,10 @@
 <?php
 
+use App\DataTransferObjects\DispatchConfig;
+use App\DataTransferObjects\RuleConfig;
 use App\Jobs\ProcessAgentRun;
 use App\Models\AgentRun;
 use App\Models\Project;
-use App\Models\Rule;
 use App\Models\WebhookLog;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -43,13 +44,26 @@ test('ProcessAgentRun job dispatches to agents queue', function () {
     Queue::fake();
 
     $project = Project::factory()->create();
-    $rule = Rule::factory()->create(['project_id' => $project->id]);
     $webhookLog = WebhookLog::factory()->create();
     $agentRun = AgentRun::factory()->create([
         'webhook_log_id' => $webhookLog->id,
     ]);
 
-    ProcessAgentRun::dispatch($agentRun, $rule, []);
+    $ruleConfig = new RuleConfig(
+        id: 'test-rule',
+        event: 'push',
+        prompt: 'Test prompt',
+    );
+
+    $dispatchConfig = new DispatchConfig(
+        version: 1,
+        agentName: 'test',
+        agentExecutor: 'laravel-ai',
+        agentProvider: 'anthropic',
+        agentModel: 'claude-sonnet-4-6',
+    );
+
+    ProcessAgentRun::dispatch($agentRun, $ruleConfig, [], $project, $dispatchConfig);
 
     Queue::assertPushedOn('agents', ProcessAgentRun::class);
 });
@@ -61,13 +75,26 @@ test('ProcessAgentRun job implements ShouldQueue', function () {
 
 test('ProcessAgentRun job is configured on agents queue by default', function () {
     $project = Project::factory()->create();
-    $rule = Rule::factory()->create(['project_id' => $project->id]);
     $webhookLog = WebhookLog::factory()->create();
     $agentRun = AgentRun::factory()->create([
         'webhook_log_id' => $webhookLog->id,
     ]);
 
-    $job = new ProcessAgentRun($agentRun, $rule, []);
+    $ruleConfig = new RuleConfig(
+        id: 'test-rule',
+        event: 'push',
+        prompt: 'Test prompt',
+    );
+
+    $dispatchConfig = new DispatchConfig(
+        version: 1,
+        agentName: 'test',
+        agentExecutor: 'laravel-ai',
+        agentProvider: 'anthropic',
+        agentModel: 'claude-sonnet-4-6',
+    );
+
+    $job = new ProcessAgentRun($agentRun, $ruleConfig, [], $project, $dispatchConfig);
 
     expect($job->queue)->toBe('agents');
 });

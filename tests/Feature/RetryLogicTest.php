@@ -1,27 +1,30 @@
 <?php
 
 use App\Ai\Agents\DispatchAgent;
+use App\DataTransferObjects\DispatchConfig;
+use App\DataTransferObjects\RetryConfig;
+use App\DataTransferObjects\RuleConfig;
 use App\Jobs\ProcessAgentRun;
 use App\Models\AgentRun;
 use App\Models\Project;
-use App\Models\Rule;
-use App\Models\RuleRetryConfig;
 use App\Models\WebhookLog;
 
 beforeEach(function () {
+    $this->tempDir = sys_get_temp_dir().'/'.uniqid('dispatch_retry_');
+    mkdir($this->tempDir, 0755, true);
+
     $this->project = Project::factory()->create([
         'repo' => 'owner/repo',
-        'path' => '/tmp/test-project',
-        'agent_provider' => 'anthropic',
-        'agent_model' => 'claude-sonnet-4-20250514',
+        'path' => $this->tempDir,
     ]);
 
-    $this->rule = Rule::factory()->create([
-        'project_id' => $this->project->id,
-        'rule_id' => 'test-rule',
-        'event' => 'push',
-        'prompt' => 'Do something',
-    ]);
+    $this->dispatchConfig = new DispatchConfig(
+        version: 1,
+        agentName: 'test',
+        agentExecutor: 'laravel-ai',
+        agentProvider: 'anthropic',
+        agentModel: 'claude-sonnet-4-6',
+    );
 
     $this->webhookLog = WebhookLog::create([
         'event_type' => 'push',
@@ -32,15 +35,18 @@ beforeEach(function () {
     ]);
 });
 
-test('retry config sets job tries and backoff', function () {
-    RuleRetryConfig::create([
-        'rule_id' => $this->rule->id,
-        'enabled' => true,
-        'max_attempts' => 5,
-        'delay' => 30,
-    ]);
+afterEach(function () {
+    @unlink($this->tempDir.'/dispatch.yml');
+    @rmdir($this->tempDir);
+});
 
-    $this->rule->refresh();
+test('retry config sets job tries and backoff', function () {
+    $ruleConfig = new RuleConfig(
+        id: 'test-rule',
+        event: 'push',
+        prompt: 'Do something',
+        retry: new RetryConfig(enabled: true, maxAttempts: 5, delay: 30),
+    );
 
     $agentRun = AgentRun::create([
         'webhook_log_id' => $this->webhookLog->id,
@@ -49,13 +55,19 @@ test('retry config sets job tries and backoff', function () {
         'created_at' => now(),
     ]);
 
-    $job = new ProcessAgentRun($agentRun, $this->rule, []);
+    $job = new ProcessAgentRun($agentRun, $ruleConfig, [], $this->project, $this->dispatchConfig);
 
     expect($job->tries)->toBe(5)
         ->and($job->backoff)->toBe(30);
 });
 
 test('job defaults to 1 try when retry is not configured', function () {
+    $ruleConfig = new RuleConfig(
+        id: 'test-rule',
+        event: 'push',
+        prompt: 'Do something',
+    );
+
     $agentRun = AgentRun::create([
         'webhook_log_id' => $this->webhookLog->id,
         'rule_id' => 'test-rule',
@@ -63,21 +75,19 @@ test('job defaults to 1 try when retry is not configured', function () {
         'created_at' => now(),
     ]);
 
-    $job = new ProcessAgentRun($agentRun, $this->rule, []);
+    $job = new ProcessAgentRun($agentRun, $ruleConfig, [], $this->project, $this->dispatchConfig);
 
     expect($job->tries)->toBe(1)
         ->and($job->backoff)->toBe(0);
 });
 
 test('job defaults to 1 try when retry is disabled', function () {
-    RuleRetryConfig::create([
-        'rule_id' => $this->rule->id,
-        'enabled' => false,
-        'max_attempts' => 5,
-        'delay' => 30,
-    ]);
-
-    $this->rule->refresh();
+    $ruleConfig = new RuleConfig(
+        id: 'test-rule',
+        event: 'push',
+        prompt: 'Do something',
+        retry: new RetryConfig(enabled: false, maxAttempts: 5, delay: 30),
+    );
 
     $agentRun = AgentRun::create([
         'webhook_log_id' => $this->webhookLog->id,
@@ -86,7 +96,7 @@ test('job defaults to 1 try when retry is disabled', function () {
         'created_at' => now(),
     ]);
 
-    $job = new ProcessAgentRun($agentRun, $this->rule, []);
+    $job = new ProcessAgentRun($agentRun, $ruleConfig, [], $this->project, $this->dispatchConfig);
 
     expect($job->tries)->toBe(1)
         ->and($job->backoff)->toBe(0);
@@ -95,6 +105,12 @@ test('job defaults to 1 try when retry is disabled', function () {
 test('attempt number is logged on agent_run', function () {
     DispatchAgent::fake(['Success']);
 
+    $ruleConfig = new RuleConfig(
+        id: 'test-rule',
+        event: 'push',
+        prompt: 'Do something',
+    );
+
     $agentRun = AgentRun::create([
         'webhook_log_id' => $this->webhookLog->id,
         'rule_id' => 'test-rule',
@@ -102,7 +118,7 @@ test('attempt number is logged on agent_run', function () {
         'created_at' => now(),
     ]);
 
-    $job = new ProcessAgentRun($agentRun, $this->rule, []);
+    $job = new ProcessAgentRun($agentRun, $ruleConfig, [], $this->project, $this->dispatchConfig);
     $job->handle();
 
     $agentRun->refresh();
@@ -113,14 +129,12 @@ test('attempt number is logged on agent_run', function () {
 test('failed execution throws when retry is enabled for queue worker to retry', function () {
     DispatchAgent::fake(fn () => throw new RuntimeException('Transient failure'));
 
-    RuleRetryConfig::create([
-        'rule_id' => $this->rule->id,
-        'enabled' => true,
-        'max_attempts' => 3,
-        'delay' => 10,
-    ]);
-
-    $this->rule->refresh();
+    $ruleConfig = new RuleConfig(
+        id: 'test-rule',
+        event: 'push',
+        prompt: 'Do something',
+        retry: new RetryConfig(enabled: true, maxAttempts: 3, delay: 10),
+    );
 
     $agentRun = AgentRun::create([
         'webhook_log_id' => $this->webhookLog->id,
@@ -129,7 +143,7 @@ test('failed execution throws when retry is enabled for queue worker to retry', 
         'created_at' => now(),
     ]);
 
-    $job = new ProcessAgentRun($agentRun, $this->rule, []);
+    $job = new ProcessAgentRun($agentRun, $ruleConfig, [], $this->project, $this->dispatchConfig);
 
     expect(fn () => $job->handle())->toThrow(RuntimeException::class, 'Transient failure');
 
@@ -141,6 +155,12 @@ test('failed execution throws when retry is enabled for queue worker to retry', 
 test('failed execution does not throw when retry is not configured', function () {
     DispatchAgent::fake(fn () => throw new RuntimeException('Permanent failure'));
 
+    $ruleConfig = new RuleConfig(
+        id: 'test-rule',
+        event: 'push',
+        prompt: 'Do something',
+    );
+
     $agentRun = AgentRun::create([
         'webhook_log_id' => $this->webhookLog->id,
         'rule_id' => 'test-rule',
@@ -148,7 +168,7 @@ test('failed execution does not throw when retry is not configured', function ()
         'created_at' => now(),
     ]);
 
-    $job = new ProcessAgentRun($agentRun, $this->rule, []);
+    $job = new ProcessAgentRun($agentRun, $ruleConfig, [], $this->project, $this->dispatchConfig);
     $job->handle();
 
     $agentRun->refresh();
@@ -157,6 +177,12 @@ test('failed execution does not throw when retry is not configured', function ()
 });
 
 test('failed() method updates agent_run to failed status', function () {
+    $ruleConfig = new RuleConfig(
+        id: 'test-rule',
+        event: 'push',
+        prompt: 'Do something',
+    );
+
     $agentRun = AgentRun::create([
         'webhook_log_id' => $this->webhookLog->id,
         'rule_id' => 'test-rule',
@@ -165,7 +191,7 @@ test('failed() method updates agent_run to failed status', function () {
         'created_at' => now(),
     ]);
 
-    $job = new ProcessAgentRun($agentRun, $this->rule, []);
+    $job = new ProcessAgentRun($agentRun, $ruleConfig, [], $this->project, $this->dispatchConfig);
     $job->failed(new RuntimeException('Final failure after retries'));
 
     $agentRun->refresh();
@@ -176,14 +202,12 @@ test('failed() method updates agent_run to failed status', function () {
 test('successful execution does not throw even with retry enabled', function () {
     DispatchAgent::fake(['All good']);
 
-    RuleRetryConfig::create([
-        'rule_id' => $this->rule->id,
-        'enabled' => true,
-        'max_attempts' => 3,
-        'delay' => 10,
-    ]);
-
-    $this->rule->refresh();
+    $ruleConfig = new RuleConfig(
+        id: 'test-rule',
+        event: 'push',
+        prompt: 'Do something',
+        retry: new RetryConfig(enabled: true, maxAttempts: 3, delay: 10),
+    );
 
     $agentRun = AgentRun::create([
         'webhook_log_id' => $this->webhookLog->id,
@@ -192,7 +216,7 @@ test('successful execution does not throw even with retry enabled', function () 
         'created_at' => now(),
     ]);
 
-    $job = new ProcessAgentRun($agentRun, $this->rule, []);
+    $job = new ProcessAgentRun($agentRun, $ruleConfig, [], $this->project, $this->dispatchConfig);
     $job->handle();
 
     $agentRun->refresh();
@@ -200,15 +224,13 @@ test('successful execution does not throw even with retry enabled', function () 
         ->and($agentRun->output)->toBe('All good');
 });
 
-test('retry config uses default values from database', function () {
-    RuleRetryConfig::create([
-        'rule_id' => $this->rule->id,
-        'enabled' => true,
-        'max_attempts' => 3,
-        'delay' => 60,
-    ]);
-
-    $this->rule->refresh();
+test('retry config uses default values from DTO', function () {
+    $ruleConfig = new RuleConfig(
+        id: 'test-rule',
+        event: 'push',
+        prompt: 'Do something',
+        retry: new RetryConfig(enabled: true, maxAttempts: 3, delay: 60),
+    );
 
     $agentRun = AgentRun::create([
         'webhook_log_id' => $this->webhookLog->id,
@@ -217,7 +239,7 @@ test('retry config uses default values from database', function () {
         'created_at' => now(),
     ]);
 
-    $job = new ProcessAgentRun($agentRun, $this->rule, []);
+    $job = new ProcessAgentRun($agentRun, $ruleConfig, [], $this->project, $this->dispatchConfig);
 
     expect($job->tries)->toBe(3)
         ->and($job->backoff)->toBe(60);

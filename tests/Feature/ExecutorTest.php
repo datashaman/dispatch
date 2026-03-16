@@ -2,13 +2,14 @@
 
 use App\Ai\Agents\DispatchAgent;
 use App\Contracts\Executor;
+use App\DataTransferObjects\AgentConfig;
+use App\DataTransferObjects\DispatchConfig;
 use App\DataTransferObjects\ExecutionResult;
+use App\DataTransferObjects\RuleConfig;
 use App\Executors\LaravelAiExecutor;
 use App\Jobs\ProcessAgentRun;
 use App\Models\AgentRun;
 use App\Models\Project;
-use App\Models\Rule;
-use App\Models\RuleAgentConfig;
 use App\Models\WebhookLog;
 use Illuminate\Support\Facades\Process;
 use Laravel\Ai\Contracts\Agent;
@@ -218,12 +219,19 @@ test('ProcessAgentRun job uses executor to process agent run', function () {
         'agent_model' => 'claude-sonnet-4-20250514',
     ]);
 
-    $rule = Rule::factory()->create([
-        'project_id' => $project->id,
-        'rule_id' => 'test-rule',
-        'event' => 'push',
-        'prompt' => 'Analyze issue #{{ event.issue.number }}',
-    ]);
+    $dispatchConfig = new DispatchConfig(
+        version: 1,
+        agentName: 'test',
+        agentExecutor: 'laravel-ai',
+        agentProvider: 'anthropic',
+        agentModel: 'claude-sonnet-4-20250514',
+    );
+
+    $ruleConfig = new RuleConfig(
+        id: 'test-rule',
+        event: 'push',
+        prompt: 'Analyze issue #{{ event.issue.number }}',
+    );
 
     $webhookLog = WebhookLog::create([
         'event_type' => 'push',
@@ -240,7 +248,7 @@ test('ProcessAgentRun job uses executor to process agent run', function () {
         'created_at' => now(),
     ]);
 
-    $job = new ProcessAgentRun($agentRun, $rule, ['issue' => ['number' => 42]]);
+    $job = new ProcessAgentRun($agentRun, $ruleConfig, ['issue' => ['number' => 42]], $project, $dispatchConfig);
     $job->handle();
 
     $agentRun->refresh();
@@ -261,14 +269,21 @@ test('ProcessAgentRun job resolves agent config with project-level fallback', fu
         'agent_instructions_file' => 'AGENT.md',
     ]);
 
-    $rule = Rule::factory()->create([
-        'project_id' => $project->id,
-        'rule_id' => 'test-rule',
-        'event' => 'push',
-        'prompt' => 'Do something',
-    ]);
+    $dispatchConfig = new DispatchConfig(
+        version: 1,
+        agentName: 'test',
+        agentExecutor: 'laravel-ai',
+        agentInstructionsFile: 'AGENT.md',
+        agentProvider: 'anthropic',
+        agentModel: 'claude-sonnet-4-20250514',
+    );
 
     // No rule-level agent config — should fall back to project-level
+    $ruleConfig = new RuleConfig(
+        id: 'test-rule',
+        event: 'push',
+        prompt: 'Do something',
+    );
 
     $webhookLog = WebhookLog::create([
         'event_type' => 'push',
@@ -285,7 +300,7 @@ test('ProcessAgentRun job resolves agent config with project-level fallback', fu
         'created_at' => now(),
     ]);
 
-    $job = new ProcessAgentRun($agentRun, $rule, []);
+    $job = new ProcessAgentRun($agentRun, $ruleConfig, [], $project, $dispatchConfig);
     $job->handle();
 
     $agentRun->refresh();
@@ -308,23 +323,28 @@ test('ProcessAgentRun job uses rule-level agent config when available', function
         'agent_model' => 'claude-sonnet-4-20250514',
     ]);
 
-    $rule = Rule::factory()->create([
-        'project_id' => $project->id,
-        'rule_id' => 'test-rule',
-        'event' => 'push',
-        'prompt' => 'Review this',
-    ]);
+    $dispatchConfig = new DispatchConfig(
+        version: 1,
+        agentName: 'test',
+        agentExecutor: 'laravel-ai',
+        agentProvider: 'anthropic',
+        agentModel: 'claude-sonnet-4-20250514',
+    );
 
-    // Create rule-level agent config that overrides project-level
-    RuleAgentConfig::create([
-        'rule_id' => $rule->id,
-        'provider' => 'openai',
-        'model' => 'gpt-4o',
-        'max_tokens' => 4096,
-        'tools' => ['read', 'write'],
-        'disallowed_tools' => ['bash'],
-        'isolation' => true,
-    ]);
+    // Rule-level agent config overrides project-level
+    $ruleConfig = new RuleConfig(
+        id: 'test-rule',
+        event: 'push',
+        prompt: 'Review this',
+        agent: new AgentConfig(
+            provider: 'openai',
+            model: 'gpt-4o',
+            maxTokens: 4096,
+            tools: ['read', 'write'],
+            disallowedTools: ['bash'],
+            isolation: true,
+        ),
+    );
 
     $webhookLog = WebhookLog::create([
         'event_type' => 'push',
@@ -341,7 +361,7 @@ test('ProcessAgentRun job uses rule-level agent config when available', function
         'created_at' => now(),
     ]);
 
-    $job = new ProcessAgentRun($agentRun, $rule, []);
+    $job = new ProcessAgentRun($agentRun, $ruleConfig, [], $project, $dispatchConfig);
     $job->handle();
 
     $agentRun->refresh();
@@ -359,12 +379,19 @@ test('ProcessAgentRun job updates agent_run with failure on exception', function
         'agent_model' => 'claude-sonnet-4-20250514',
     ]);
 
-    $rule = Rule::factory()->create([
-        'project_id' => $project->id,
-        'rule_id' => 'test-rule',
-        'event' => 'push',
-        'prompt' => 'Do something',
-    ]);
+    $dispatchConfig = new DispatchConfig(
+        version: 1,
+        agentName: 'test',
+        agentExecutor: 'laravel-ai',
+        agentProvider: 'anthropic',
+        agentModel: 'claude-sonnet-4-20250514',
+    );
+
+    $ruleConfig = new RuleConfig(
+        id: 'test-rule',
+        event: 'push',
+        prompt: 'Do something',
+    );
 
     $webhookLog = WebhookLog::create([
         'event_type' => 'push',
@@ -381,7 +408,7 @@ test('ProcessAgentRun job updates agent_run with failure on exception', function
         'created_at' => now(),
     ]);
 
-    $job = new ProcessAgentRun($agentRun, $rule, []);
+    $job = new ProcessAgentRun($agentRun, $ruleConfig, [], $project, $dispatchConfig);
     $job->handle();
 
     $agentRun->refresh();
@@ -400,12 +427,19 @@ test('ProcessAgentRun job renders prompt template with payload', function () {
         'agent_model' => 'claude-sonnet-4-20250514',
     ]);
 
-    $rule = Rule::factory()->create([
-        'project_id' => $project->id,
-        'rule_id' => 'test-rule',
-        'event' => 'issues.opened',
-        'prompt' => 'Review issue "{{ event.issue.title }}" by {{ event.issue.user.login }}',
-    ]);
+    $dispatchConfig = new DispatchConfig(
+        version: 1,
+        agentName: 'test',
+        agentExecutor: 'laravel-ai',
+        agentProvider: 'anthropic',
+        agentModel: 'claude-sonnet-4-20250514',
+    );
+
+    $ruleConfig = new RuleConfig(
+        id: 'test-rule',
+        event: 'issues.opened',
+        prompt: 'Review issue "{{ event.issue.title }}" by {{ event.issue.user.login }}',
+    );
 
     $webhookLog = WebhookLog::create([
         'event_type' => 'issues.opened',
@@ -429,7 +463,7 @@ test('ProcessAgentRun job renders prompt template with payload', function () {
         ],
     ];
 
-    $job = new ProcessAgentRun($agentRun, $rule, $payload);
+    $job = new ProcessAgentRun($agentRun, $ruleConfig, $payload, $project, $dispatchConfig);
     $job->handle();
 
     $agentRun->refresh();
