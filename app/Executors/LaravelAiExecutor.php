@@ -17,7 +17,7 @@ class LaravelAiExecutor implements Executor
         protected ToolRegistry $toolRegistry,
     ) {}
 
-    public function execute(AgentRun $run, string $renderedPrompt, array $agentConfig): ExecutionResult
+    public function execute(AgentRun $run, string $renderedPrompt, array $agentConfig, array $conversationHistory = []): ExecutionResult
     {
         $startTime = hrtime(true);
 
@@ -29,6 +29,10 @@ class LaravelAiExecutor implements Executor
                 systemPrompt: $systemPrompt,
                 agentTools: $tools,
             );
+
+            if (! empty($conversationHistory)) {
+                $agent->withConversationHistory($conversationHistory);
+            }
 
             $provider = $agentConfig['provider'] ?? null;
             $model = $agentConfig['model'] ?? null;

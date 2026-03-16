@@ -5,18 +5,20 @@ namespace App\Executors;
 use App\Contracts\Executor;
 use App\DataTransferObjects\ExecutionResult;
 use App\Models\AgentRun;
+use App\Services\ConversationMemory;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Throwable;
 
 class ClaudeCliExecutor implements Executor
 {
-    public function execute(AgentRun $run, string $renderedPrompt, array $agentConfig): ExecutionResult
+    public function execute(AgentRun $run, string $renderedPrompt, array $agentConfig, array $conversationHistory = []): ExecutionResult
     {
         $startTime = hrtime(true);
 
         try {
-            $command = $this->buildCommand($renderedPrompt, $agentConfig);
+            $promptWithHistory = $this->prependConversationHistory($renderedPrompt, $conversationHistory);
+            $command = $this->buildCommand($promptWithHistory, $agentConfig);
             $workingDirectory = $agentConfig['project_path'] ?? getcwd();
 
             $result = Process::path($workingDirectory)
@@ -96,6 +98,22 @@ class ClaudeCliExecutor implements Executor
         $command[] = $renderedPrompt;
 
         return $command;
+    }
+
+    /**
+     * Prepend conversation history to the rendered prompt.
+     *
+     * @param  list<array{role: string, content: string}>  $conversationHistory
+     */
+    protected function prependConversationHistory(string $renderedPrompt, array $conversationHistory): string
+    {
+        if (empty($conversationHistory)) {
+            return $renderedPrompt;
+        }
+
+        $historyText = app(ConversationMemory::class)->formatAsText($conversationHistory);
+
+        return $historyText."## Current Request\n\n".$renderedPrompt;
     }
 
     /**

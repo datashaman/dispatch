@@ -7,6 +7,7 @@ use App\Executors\ClaudeCliExecutor;
 use App\Executors\LaravelAiExecutor;
 use App\Models\AgentRun;
 use App\Models\Rule;
+use App\Services\ConversationMemory;
 use App\Services\OutputHandler;
 use App\Services\PromptRenderer;
 use App\Services\WorktreeManager;
@@ -42,6 +43,7 @@ class ProcessAgentRun implements ShouldQueue
             $this->payload,
         );
         $agentConfig = $this->resolveAgentConfig();
+        $conversationHistory = $this->loadConversationHistory();
 
         $worktree = null;
 
@@ -51,7 +53,7 @@ class ProcessAgentRun implements ShouldQueue
         }
 
         try {
-            $result = $executor->execute($this->agentRun, $renderedPrompt, $agentConfig);
+            $result = $executor->execute($this->agentRun, $renderedPrompt, $agentConfig, $conversationHistory);
 
             $this->agentRun->update([
                 'status' => $result->status,
@@ -85,6 +87,23 @@ class ProcessAgentRun implements ShouldQueue
             'status' => 'failed',
             'error' => $exception?->getMessage(),
         ]);
+    }
+
+    /**
+     * Load conversation history for the current thread.
+     *
+     * @return list<array{role: string, content: string}>
+     */
+    protected function loadConversationHistory(): array
+    {
+        $memory = app(ConversationMemory::class);
+        $threadKey = $memory->deriveThreadKey($this->payload);
+
+        if (! $threadKey) {
+            return [];
+        }
+
+        return $memory->retrieveHistory($threadKey, $this->agentRun->id);
     }
 
     /**
