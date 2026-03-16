@@ -1,0 +1,625 @@
+## Codebase Patterns
+- Use `php artisan make:model -mf --no-interaction` to scaffold models with migrations and factories
+- Use `php artisan make:test --pest {name} --no-interaction` to create Pest feature tests
+- Use `vendor/bin/pint --dirty --format agent` before committing PHP changes
+- Models use `casts()` method (not `$casts` property) per Laravel 12 convention
+- Factories use `fake()` helper (not `$this->faker`)
+- The project uses SQLite for local development
+- Migration files must be ordered by timestamp — ensure FK dependencies run after parent tables
+- Enum cases use TitleCase (e.g., `NotEquals`, `StartsWith`)
+- All cascade deletes are handled at the migration level with `->cascadeOnDelete()`
+- `WebhookLog` and `AgentRun` use `$timestamps = false` with manual `created_at` only
+- API routes live in `routes/api.php`, registered via `api:` in `bootstrap/app.php` `withRouting()`
+- GitHub webhook config (secret, verify flag) stored in `config/services.php` under `github` key
+- For HMAC signature tests, use `$this->call('POST', ...)` with raw JSON body (not `postJson()` which re-encodes)
+- Tests hitting `/api/webhook` need: `config(['services.github.verify_webhook_signature' => false])` and a `Project::factory()->create()` for the repo
+- Artisan commands use `dispatch:` prefix (e.g., `dispatch:add-project`)
+- DTOs live in `app/DataTransferObjects/` as readonly classes with constructor promotion
+- Custom exceptions live in `app/Exceptions/`
+- Services live in `app/Services/`
+- ConfigLoader uses `Symfony\Component\Yaml\Yaml::parseFile()` to parse dispatch.yml
+- ConfigSyncer handles bidirectional sync between DB and dispatch.yml via `import()` and `export()` methods
+- `expectsOutputToContain` may not match all output — prefer model assertions for data verification, use `expectsTable` for table output
+- Project-level agent config stored directly on `projects` table (agent_name, agent_executor, agent_provider, agent_model, agent_instructions_file, agent_secrets)
+- Use `Yaml::dump($data, 10, 2, Yaml::DUMP_MULTI_LINE_LITERAL_BLOCK)` for human-readable YAML export
+- `ConfigLoader::load()` checks cache first; use `loadFromDisk()` to bypass cache (e.g., in import operations)
+- Config cache keys: `dispatch:config:{md5(path)}` — use `ConfigLoader::clearCache($path)` to invalidate
+---
+
+## 2026-03-16 - US-001
+- Implemented complete database schema: projects, rules, rule_agent_configs, rule_output_configs, rule_retry_configs, filters, webhook_logs, agent_runs
+- Created FilterOperator enum with 7 operators (equals, not_equals, contains, not_contains, starts_with, ends_with, matches)
+- All 8 models with relationships, factories, and proper casts
+- 19 tests covering all tables, relationships, cascading deletes, factory validity, and operator validation
+- Files changed:
+  - app/Enums/FilterOperator.php (new)
+  - app/Models/{Project,Rule,RuleAgentConfig,RuleOutputConfig,RuleRetryConfig,Filter,WebhookLog,AgentRun}.php (new)
+  - database/factories/{ProjectFactory,RuleFactory,RuleAgentConfigFactory,RuleOutputConfigFactory,RuleRetryConfigFactory,FilterFactory,WebhookLogFactory,AgentRunFactory}.php (new)
+  - database/migrations/2026_03_16_* (8 migration files)
+  - tests/Feature/DatabaseSchemaTest.php (new)
+- **Learnings for future iterations:**
+  - Migration timestamp collisions can cause FK ordering issues — artisan generates same-second timestamps, rename to ensure correct order
+  - Pint auto-fixes `fully_qualified_strict_types` and `ordered_imports` — run it before committing
+  - SQLite doesn't strictly enforce FK constraints by default but the schema still works correctly with cascade deletes
+---
+
+## 2026-03-16 - US-002
+- Implemented three Artisan commands: `dispatch:add-project`, `dispatch:remove-project`, `dispatch:list-projects`
+- Add validates path exists on disk and repo uniqueness
+- Remove includes confirmation prompt
+- List displays table of repo/path pairs
+- 8 tests covering all commands including error cases and confirmation denial
+- Files changed:
+  - app/Console/Commands/{AddProjectCommand,RemoveProjectCommand,ListProjectsCommand}.php (new)
+  - tests/Feature/ProjectCommandsTest.php (new)
+- **Learnings for future iterations:**
+  - Artisan command tests use `expectsConfirmation()` for confirm prompts, not `expectsQuestion()`
+  - Commands namespace as `dispatch:*` for this project
+  - Use `php artisan make:command` to scaffold, then overwrite with implementation
+---
+
+## 2026-03-16 - US-003
+- Implemented ConfigLoader service to parse and validate `dispatch.yml`
+- Created 6 DTOs: DispatchConfig, RuleConfig, FilterConfig, AgentConfig, OutputConfig, RetryConfig
+- Created ConfigLoadException for descriptive error reporting
+- ConfigLoader validates: required top-level fields (version, agent, rules), agent sub-fields (name, executor), rule required fields (id, event, prompt), filter operators against FilterOperator enum
+- Logs validation errors as warnings before throwing exceptions
+- 27 tests covering valid configs, all field parsing, missing fields, malformed YAML, invalid operators, minimal rules, multiple rules
+- Files changed:
+  - app/DataTransferObjects/{DispatchConfig,RuleConfig,FilterConfig,AgentConfig,OutputConfig,RetryConfig}.php (new)
+  - app/Exceptions/ConfigLoadException.php (new)
+  - app/Services/ConfigLoader.php (new)
+  - tests/Feature/ConfigLoaderTest.php (new)
+- **Learnings for future iterations:**
+  - Symfony Yaml is available as a transitive dependency — no need to install separately
+  - Use `sys_get_temp_dir()` with `uniqid()` for temp test directories with YAML fixtures
+  - Pint will clean up `@param mixed` PHPDoc tags (no_superfluous_phpdoc_tags) — use type hints directly
+  - Log::shouldReceive('warning') works with Mockery for testing logged warnings
+---
+
+## 2026-03-16 - US-004
+- Implemented bidirectional config sync between DB and dispatch.yml
+- Created ConfigSyncer service with `import()`, `export()`, `buildConfigFromDatabase()`, `configToYaml()` methods
+- Added migration to store project-level agent config on `projects` table (agent_name, agent_executor, agent_provider, agent_model, agent_instructions_file, agent_secrets)
+- Import: loads dispatch.yml via ConfigLoader, upserts rules/filters/configs keyed on rule_id, deletes rules in DB but not in file
+- Export: builds DispatchConfig DTO from DB state, converts to YAML, writes to dispatch.yml
+- Three Artisan commands: `dispatch:import {repo}`, `dispatch:export {repo}`, `dispatch:sync {repo} --direction=import|export`
+- 20 tests covering import, export, round-trip, all sub-configs, merge behavior, command error cases
+- Files changed:
+  - database/migrations/2026_03_16_062728_add_agent_config_to_projects_table.php (new)
+  - app/Models/Project.php (modified — added agent config fillables and casts)
+  - app/Services/ConfigSyncer.php (new)
+  - app/Console/Commands/{ImportConfigCommand,ExportConfigCommand,SyncConfigCommand}.php (new)
+  - tests/Feature/ConfigSyncTest.php (new)
+- **Learnings for future iterations:**
+  - `updateOrCreate` is ideal for upserting rules by rule_id — avoids manual existence checks
+  - Delete-and-recreate is simpler than diffing for child collections like filters
+  - `Yaml::dump()` with depth 10 and indent 2 produces readable multi-level YAML
+  - Pint fixes `unary_operator_spaces`, `braces_position`, `no_unused_imports` — always run before committing
+  - `dispatch:sync` can delegate to other commands via `$this->call()` for convenience aliases
+---
+
+## 2026-03-16 - US-005
+- Implemented four Artisan commands for Rule CRUD: `dispatch:add-rule`, `dispatch:update-rule`, `dispatch:remove-rule`, `dispatch:list-rules`
+- Add accepts required args (repo, rule_id, event) and options (--name, --prompt, --circuit-break, --sort-order)
+- Update accepts only the options to change, warns if no options provided
+- Remove includes confirmation prompt, cascade deletes handle associated filters/configs
+- List displays rules ordered by sort_order in a table
+- 17 tests covering all commands including error cases, cascade deletes, confirmation denial, partial updates
+- Files changed:
+  - app/Console/Commands/{AddRuleCommand,UpdateRuleCommand,RemoveRuleCommand,ListRulesCommand}.php (new)
+  - tests/Feature/RuleCommandsTest.php (new)
+- **Learnings for future iterations:**
+  - Cascade deletes from migrations handle associated config cleanup automatically — no need to manually delete filters/agent_config/output_config/retry_config when deleting a rule
+  - `filter_var($value, FILTER_VALIDATE_BOOLEAN)` is useful for parsing string boolean options like --circuit-break=true/false
+  - Rule commands follow same pattern as project commands — look up project first, then operate on rules via relationship
+---
+
+## 2026-03-16 - US-006
+- Implemented three Artisan commands: `dispatch:add-filter`, `dispatch:remove-filter`, `dispatch:list-filters`
+- Add validates project/rule existence, requires --field/--operator/--value, validates operator against FilterOperator enum
+- Remove includes confirmation prompt, looks up filter by filter_id
+- List displays table of filters ordered by sort_order
+- 22 tests covering all commands including error cases, operator validation (all 7 operators via dataset), confirmation denial
+- Files changed:
+  - app/Console/Commands/{AddFilterCommand,RemoveFilterCommand,ListFiltersCommand}.php (new)
+  - tests/Feature/FilterCommandsTest.php (new)
+- **Learnings for future iterations:**
+  - Filter commands follow the same project→rule→filter lookup chain pattern as rule commands
+  - Pest's `->with([...])` dataset feature is great for testing all enum values without repetitive tests
+  - `FilterOperator::tryFrom()` is cleaner than try/catch for validating enum values from user input
+---
+
+## 2026-03-16 - US-007
+- Implemented `dispatch:configure-agent` command to set agent config per rule (provider, model, max-tokens, tools, disallowed-tools, isolation)
+- Implemented `dispatch:show-rule` command to display full rule configuration including agent, output, retry, and filters
+- Show-rule displays project-level fallback values with "(from project)" annotation when rule-level is null
+- 13 tests covering configuration, updates, partial updates, fallback behavior, error cases, and full display
+- Files changed:
+  - app/Console/Commands/ConfigureAgentCommand.php (new)
+  - app/Console/Commands/ShowRuleCommand.php (new)
+  - tests/Feature/AgentConfigTest.php (new)
+- **Learnings for future iterations:**
+  - `updateOrCreate` on HasOne relationship works well for agent config — creates if missing, updates if exists
+  - `expectsOutputToContain` in Artisan test may not reliably match all output lines — use `expectsOutput` for exact lines or test values directly via model assertions
+  - `expectsTable` can be used to verify table output in command tests
+  - Comma-separated tool lists are parsed with `array_map('trim', explode(',', $value))` for clean arrays
+---
+
+## 2026-03-16 - US-008
+- Implemented `dispatch:configure-output` command to set output config per rule (log, github-comment, github-reaction)
+- Implemented `dispatch:configure-retry` command to set retry config per rule (enabled, max-attempts, delay)
+- Both commands follow the same pattern as `dispatch:configure-agent` — updateOrCreate on HasOne relationship
+- 13 tests covering creation, updates, partial updates, disable behavior, no-option warnings, error cases
+- Files changed:
+  - app/Console/Commands/ConfigureOutputCommand.php (new)
+  - app/Console/Commands/ConfigureRetryCommand.php (new)
+  - tests/Feature/OutputRetryConfigTest.php (new)
+- **Learnings for future iterations:**
+  - Output/retry/agent config commands are nearly identical in structure — project→rule lookup, options collection, updateOrCreate pattern
+  - Boolean options use `filter_var($value, FILTER_VALIDATE_BOOLEAN)` consistently across all config commands
+  - Integer options cast with `(int)` — same pattern in agent config for max_tokens
+---
+
+## 2026-03-16 - US-009
+- Installed Laravel Horizon (`laravel/horizon ^5.45`) with `composer require` and `horizon:install`
+- Configured `agents` queue in Horizon supervisor defaults alongside `default` queue
+- Set timeout to 300s for agent jobs (longer-running AI tasks)
+- Changed queue connection from `database` to `redis` in `.env` and `.env.example`
+- Created `ProcessAgentRun` job dispatching to `agents` queue with `AgentRun` model binding
+- HorizonServiceProvider auto-registered in `bootstrap/providers.php`
+- Horizon dashboard accessible at `/horizon`
+- 7 tests covering: Horizon installation, agents queue config, Redis connection config, dashboard route, job dispatch to agents queue, ShouldQueue implementation, default queue assignment
+- Files changed:
+  - composer.json, composer.lock (added laravel/horizon)
+  - config/horizon.php (new — Horizon config with agents queue)
+  - app/Providers/HorizonServiceProvider.php (new — Horizon gate and boot)
+  - app/Jobs/ProcessAgentRun.php (new — queued job on agents queue)
+  - .env, .env.example (QUEUE_CONNECTION=redis)
+  - bootstrap/providers.php (added HorizonServiceProvider)
+  - tests/Feature/QueueInfrastructureTest.php (new)
+- **Learnings for future iterations:**
+  - Horizon dashboard returns 403 in test environment (APP_ENV=testing) due to gate — test for route existence with status in [200, 302, 403]
+  - `phpunit.xml` overrides QUEUE_CONNECTION to `sync` for tests — don't test `config('queue.default')` directly, test the config file structure instead
+  - Pint auto-fixes `fully_qualified_strict_types` in test files — always run before committing
+  - ProcessAgentRun job uses `$this->onQueue('agents')` in constructor for default queue assignment
+---
+
+## 2026-03-16 - US-010
+- Implemented `POST /api/webhook` endpoint via WebhookController
+- Reads `X-GitHub-Event` header, combines with `payload.action` to form event type (e.g. `issues.labeled`)
+- Verifies `X-Hub-Signature-256` against `GITHUB_WEBHOOK_SECRET` via HMAC SHA-256 when `VERIFY_WEBHOOK_SIGNATURE` is true
+- Skips verification when `VERIFY_WEBHOOK_SIGNATURE` is false
+- Returns 401 on signature mismatch or missing signature/secret
+- Handles `ping` event with `{"ok": true, "event": "ping"}` response
+- Logs every incoming webhook to `webhook_logs` table (including errors and pings)
+- Returns descriptive JSON error responses
+- Added migration to make `webhook_logs.repo` nullable (ping events and some events lack repository info)
+- Added GitHub config to `config/services.php` for webhook_secret and verify_webhook_signature
+- Added API routing via `routes/api.php` and `bootstrap/app.php`
+- 13 tests covering: missing headers, ping, event+action combination, event-only, logging, webhook_log_id in response, signature verification, invalid signature, missing signature, skip verification, missing secret, ping logging, no repository info
+- Files changed:
+  - app/Http/Controllers/WebhookController.php (new)
+  - routes/api.php (new)
+  - bootstrap/app.php (modified — added API routing)
+  - config/services.php (modified — added GitHub webhook config)
+  - .env, .env.example (added GITHUB_WEBHOOK_SECRET, VERIFY_WEBHOOK_SIGNATURE)
+  - database/migrations/2026_03_16_065433_make_webhook_logs_repo_nullable.php (new)
+  - tests/Feature/WebhookEndpointTest.php (new)
+- **Learnings for future iterations:**
+  - API routes in Laravel 12 are added via `api:` parameter in `withRouting()` in `bootstrap/app.php`
+  - For HMAC signature verification, use `$this->call('POST', ...)` with raw JSON body and `HTTP_` prefixed headers for precise control over request content
+  - `postJson()` re-encodes the payload, so signature computed on original JSON won't match — use `$this->call()` with raw body for signature tests
+  - `webhook_logs.repo` should be nullable — not all GitHub events include repository info (e.g. ping)
+  - Config values for webhook verification stored in `config/services.php` under `github` key
+---
+
+## 2026-03-16 - US-011
+- Implemented self-loop prevention: webhook events from the bot's own GitHub user are logged but not processed
+- Added `GITHUB_BOT_USERNAME` env var and `config('services.github.bot_username')` config
+- Self-loop check runs after signature verification, before ping/event processing
+- Returns `{"ok": true, "event": "...", "skipped": "self-loop"}` response for self-loop events
+- Events are still logged to `webhook_logs` with error note "Self-loop detected"
+- When `GITHUB_BOT_USERNAME` is not configured, all events are processed normally
+- 5 tests covering: self-loop skip, logging with note, non-matching sender, unconfigured bot username, events without action
+- Files changed:
+  - app/Http/Controllers/WebhookController.php (modified — added `isSelfLoop()` method and self-loop check)
+  - config/services.php (modified — added `bot_username` key)
+  - .env, .env.example (added GITHUB_BOT_USERNAME)
+  - tests/Feature/SelfLoopPreventionTest.php (new)
+- **Learnings for future iterations:**
+  - Self-loop check should be after signature verification but before ping/event processing — ensures security checks still apply to bot events
+  - `.env` is gitignored — only commit `.env.example` changes
+  - Config for GitHub settings all lives under `config('services.github.*')`
+---
+
+## 2026-03-16 - US-012
+- Implemented RuleMatchingEngine service to match incoming webhooks against configured rules
+- Matches rules by exact event type, evaluates all filters with AND logic
+- Supports all 7 filter operators: equals, not_equals, contains, not_contains, starts_with, ends_with, matches (regex)
+- Filter `field` supports dot-path resolution with optional `event.` prefix stripping
+- Missing field paths resolve to empty string (no errors)
+- Integrated matching engine into WebhookController — updates webhook_log with matched_rules and processed status
+- Created RuleMatchingException for missing project error handling
+- Handles missing `repository.full_name` in payload with 422 response
+- 22 tests covering: project not found, event matching, multiple matches in sort_order, no filters, all 7 operators, AND logic, event prefix, nested paths, missing paths, cross-project isolation, controller integration (missing project, matching, no matches), error logging, webhook log updates
+- Updated existing WebhookEndpointTest and SelfLoopPreventionTest to create projects (needed since controller now runs rule matching)
+- Files changed:
+  - app/Services/RuleMatchingEngine.php (new)
+  - app/Exceptions/RuleMatchingException.php (new)
+  - app/Http/Controllers/WebhookController.php (modified — integrated rule matching after webhook logging)
+  - tests/Feature/RuleMatchingEngineTest.php (new)
+  - tests/Feature/WebhookEndpointTest.php (modified — added project creation, updated assertions)
+  - tests/Feature/SelfLoopPreventionTest.php (modified — added project creation)
+- **Learnings for future iterations:**
+  - Adding rule matching to WebhookController changes the response format — existing tests expecting old format need updating
+  - Tests that hit `/api/webhook` now need `Project::factory()->create()` for the repo in the payload
+  - `Illuminate\Support\Arr::get()` is ideal for dot-path resolution against nested arrays
+  - WebhookController integration tests need `config(['services.github.verify_webhook_signature' => false])` to bypass signature verification
+  - Pint auto-fixes `no_unused_imports` — the `Log` import was removed from WebhookController since it wasn't directly used
+---
+
+## 2026-03-16 - US-013
+- Implemented PromptRenderer service to render `{{ event.field.path }}` template syntax against webhook payloads
+- Uses `preg_replace_callback` with regex to find `{{ event.* }}` placeholders
+- Strips the `event.` prefix and resolves remaining dot-path against payload using `Arr::get()`
+- Unresolved paths, null values render as empty string (no errors)
+- Supports nested paths, array index access, numeric/boolean values, multiline templates
+- 15 tests covering: simple paths, multiple placeholders, nested paths, unresolved paths, whitespace in tags, no placeholders, array access, deep nesting, numeric/boolean/null values, multiline, empty template, empty payload
+- Files changed:
+  - app/Services/PromptRenderer.php (new)
+  - tests/Feature/PromptRendererTest.php (new)
+- **Learnings for future iterations:**
+  - `Arr::get()` handles dot-path resolution including numeric array indices (e.g., `labels.0.name`)
+  - `(string)` cast on `Arr::get()` result handles null→empty string conversion cleanly
+  - PromptRenderer is a pure service with no dependencies — can be used standalone or injected
+- Contracts (interfaces) live in `app/Contracts/`, executors in `app/Executors/`, AI agents in `app/Ai/Agents/`
+- Tools live in `app/Ai/Tools/` implementing `Laravel\Ai\Contracts\Tool` with `description()`, `handle(Request)`, `schema(JsonSchema)` methods
+- ToolRegistry (`app/Services/ToolRegistry.php`) maps tool name strings to Tool class instances — use `resolve(allowed, disallowed, workDir)`
+- `LaravelAiExecutor` requires `ToolRegistry` DI — always resolve via `app(LaravelAiExecutor::class)`, not `new`
+- Use `DispatchAgent::fake(['response'])` to mock AI agent responses in tests
+- Executor pattern: `app/Contracts/Executor.php` interface, implementations in `app/Executors/`
+- Agent config resolution chain: rule-level (`RuleAgentConfig`) → project-level (`Project.agent_*`) → null
+- `ProcessAgentRun::resolveExecutor()` maps `agent_executor` string to executor class — `laravel-ai` → `LaravelAiExecutor`, `claude-cli` → `ClaudeCliExecutor`
+- `Process::fake()` output has trailing newline — always `trim()` output in executors that shell out
+- Volt page components must have a single root element (`<section>`) — `<x-layouts::app>` causes `MultipleRootElementsDetectedException`
+- Volt page routes: `Route::livewire('path', 'pages::namespace.component')->name('route.name')` in `routes/web.php`
+- Volt pages use class-based style: `new #[Title('...')] class extends Component { ... }; ?>`
+- For Livewire component messages, use public properties (not `session()->flash()`) — testable via `assertSet()`
+- Mockery can't extend readonly classes — provide real DTO instances via `andReturn()`
+- `WorktreeManager` handles git worktree lifecycle — create/cleanup/remove, path: `{project}/.worktrees/{rule_id}-{hash}`
+- `ProcessAgentRun` overrides `project_path` in agentConfig when isolation is enabled, cleanup in `finally` block
+- `OutputHandler` routes agent output after successful execution — log (default), GitHub comment, GitHub reaction
+- `Process::assertNothingRan()` is correct for asserting no processes ran (not `assertDidntRun()` without args)
+- Tests with `isolation: true` in `RuleAgentConfig` need a real git directory via `sys_get_temp_dir()` + `git init`
+- `ConversationMemory` derives thread keys from webhook payloads: `{repo}:{type}:{number}` — use for any thread-scoped feature
+- Executor interface accepts optional `$conversationHistory` array — backward compatible with `[]` default
+- `DispatchAgent` implements `Conversational` — set history via `withConversationHistory()` before `prompt()`
+- For Artisan command output assertions, use `Artisan::call()` + `Artisan::output()` + `expect()->toContain()` — `expectsOutputToContain` is unreliable
+- `Process::fake(['*' => Process::result(...)])` is safer than exact command string keys for pattern matching
+- For Livewire filter tests, use `$component->instance()->getMethod()` to verify query results — `assertDontSee` fails when values appear in filter dropdowns
+---
+
+## 2026-03-16 - US-015
+- Implemented Executor interface and LaravelAiExecutor using the Laravel AI SDK (`laravel/ai`)
+- Created `Executor` interface in `app/Contracts/` with `execute(AgentRun, string, array): ExecutionResult` method
+- Created `ExecutionResult` DTO in `app/DataTransferObjects/` for structured execution results (status, output, tokens, cost, duration, error)
+- Created `DispatchAgent` in `app/Ai/Agents/` — a dynamic AI agent implementing `Agent` and `HasTools` with runtime-configurable instructions and tools
+- Created `LaravelAiExecutor` in `app/Executors/` — executes agents via Laravel AI SDK's `prompt()` method with provider/model passthrough
+- Loads system prompt from `instructions_file` relative to project path, falls back to default
+- Updated `ProcessAgentRun` job to use the executor: resolves executor type, renders prompt, resolves agent config with project-level fallback, updates agent_run with execution results
+- Published `config/ai.php` for AI provider configuration
+- Updated existing `AgentDispatchingTest` to use `DispatchAgent::fake()` since the job now executes real agent logic
+- 14 new tests covering: interface contract, DTO success/failure, executor success/failure, instructions file loading, missing file fallback, provider passthrough, job integration with executor, project-level fallback, rule-level override, failure handling, prompt rendering, DispatchAgent interface verification
+- Files changed:
+  - app/Contracts/Executor.php (new)
+  - app/DataTransferObjects/ExecutionResult.php (new)
+  - app/Ai/Agents/DispatchAgent.php (new)
+  - app/Executors/LaravelAiExecutor.php (new)
+  - app/Jobs/ProcessAgentRun.php (modified — integrated executor pattern)
+  - config/ai.php (new — published from laravel/ai)
+  - tests/Feature/ExecutorTest.php (new)
+  - tests/Feature/AgentDispatchingTest.php (modified — added DispatchAgent::fake())
+- **Learnings for future iterations:**
+  - Laravel AI SDK's `Promptable` trait provides `prompt(string, attachments, provider, model)` — provider and model are passed at call time, not via constructor
+  - `DispatchAgent::fake(['response text'])` is the correct way to mock AI agent responses in tests — returns a `FakeTextGateway`
+  - `DispatchAgent::assertPrompted('prompt text')` verifies the exact prompt sent to the agent
+  - The `prompt()` method's `provider` param accepts a string name matching keys in `config/ai.php`'s `providers` array
+  - Executor pattern (`app/Contracts/Executor.php`) allows swapping between `LaravelAiExecutor` and future `ClaudeCliExecutor`
+  - Agent config resolution: rule-level → project-level → null fallback chain, done in `ProcessAgentRun::resolveAgentConfig()`
+  - `hrtime(true)` gives nanoseconds — divide by 1_000_000 for milliseconds for duration tracking
+  - Contracts (interfaces) live in `app/Contracts/`, executors in `app/Executors/`, AI agents in `app/Ai/Agents/`
+---
+
+## 2026-03-16 - US-016
+- Implemented 6 agent tools as Laravel AI SDK Tool classes: ReadTool, EditTool, WriteTool, BashTool, GlobTool, GrepTool
+- All tools accept a `workingDirectory` constructor parameter and scope operations to that directory
+- ReadTool/EditTool/WriteTool include path traversal prevention via `realpath()` checks
+- BashTool uses `Process::path()` to set working directory, 120s timeout
+- GlobTool uses Symfony Finder for pattern matching
+- GrepTool shells out to `grep -rn` with optional `--include` filter
+- Created ToolRegistry service to resolve tool name strings (from config) to Tool instances
+- ToolRegistry supports allowed/disallowed tool filtering with disallowed taking precedence
+- Updated LaravelAiExecutor to accept ToolRegistry via constructor injection and pass resolved tools to DispatchAgent
+- Updated existing ExecutorTest to use `app(LaravelAiExecutor::class)` instead of direct instantiation
+- 26 new tests covering all tools, ToolRegistry resolution, filtering, interface compliance, working directory scoping
+- Files changed:
+  - app/Ai/Tools/{ReadTool,EditTool,WriteTool,BashTool,GlobTool,GrepTool}.php (new)
+  - app/Services/ToolRegistry.php (new)
+  - app/Executors/LaravelAiExecutor.php (modified — added ToolRegistry DI and tool resolution)
+  - tests/Feature/AgentToolsTest.php (new)
+  - tests/Feature/ExecutorTest.php (modified — updated instantiation)
+- **Learnings for future iterations:**
+  - Tools live in `app/Ai/Tools/` and implement `Laravel\Ai\Contracts\Tool`
+  - Tool `schema()` method uses `JsonSchema` fluent API: `$schema->string()->description('...')->required()`
+  - Tool `handle()` receives a `Laravel\Ai\Tools\Request` with `string()`, `all()` methods
+  - WriteTool's `resolvePath` can't use `realpath()` for non-existent nested directories — use manual path normalization instead
+  - `LaravelAiExecutor` now requires `ToolRegistry` via DI — use `app(LaravelAiExecutor::class)` not `new LaravelAiExecutor`
+  - ToolRegistry maps string names ('Read', 'Edit', etc.) to Tool classes — config stores names, registry resolves to instances
+  - Symfony Finder is available as a transitive dependency for file pattern matching
+---
+
+## 2026-03-16 - US-017
+- Implemented `ClaudeCliExecutor` that shells out to `claude` CLI via `Process::run()` with rendered prompt
+- Sets working directory to project path (or worktree path)
+- Passes `--allowedTools` and `--disallowedTools` flags from agent config
+- Passes `--model` flag when model is configured
+- Loads system prompt from `instructions_file` via `--system-prompt` flag
+- Uses `--print --output-format text` for non-interactive output capture
+- Updated `ProcessAgentRun` job to resolve `ClaudeCliExecutor` when `agent_executor` is `claude-cli`
+- 12 tests covering: interface compliance, success/failure execution, allowed/disallowed tools flags, model flag, system prompt loading, missing instructions file, working directory, job integration, output format
+- Files changed:
+  - app/Executors/ClaudeCliExecutor.php (new)
+  - app/Jobs/ProcessAgentRun.php (modified — added claude-cli executor resolution)
+  - tests/Feature/ClaudeCliExecutorTest.php (new)
+- **Learnings for future iterations:**
+  - `Process::fake()` output includes trailing newline — use `trim()` on `$result->output()` for clean comparison
+  - `Process::assertRan()` callback receives `PendingProcess` — check `$process->command` (array) and `$process->path` for assertions
+  - Claude CLI uses `--print` for non-interactive mode and `--output-format text` for plain text output
+  - `ClaudeCliExecutor` doesn't need `ToolRegistry` DI — tools are passed as CLI flag strings, not PHP objects
+  - The `resolveExecutor()` match in `ProcessAgentRun` maps `agent_executor` string to executor class — add new executors there
+---
+
+## 2026-03-16 - US-018
+- Implemented `WorktreeManager` service for git worktree lifecycle management
+- Creates worktrees at `{project_path}/.worktrees/{rule_id}-{hash}` with branch `dispatch/{rule_id}/{hash}`
+- `hasNewCommits()` compares worktree HEAD vs main repo HEAD to detect agent commits
+- `cleanup()` removes worktree if no new commits, retains it if commits exist (for PR creation)
+- `remove()` force-removes worktree and deletes its branch
+- Updated `ProcessAgentRun` job to create worktree when `isolation: true` and override `project_path` in agent config
+- Worktree cleanup runs in `finally` block to ensure cleanup even on failure
+- 8 tests covering: worktree creation with correct naming, no-commit detection, commit detection, cleanup removal, cleanup retention, job integration with isolation on, job integration with isolation off, creation failure exception
+- Files changed:
+  - app/Services/WorktreeManager.php (new)
+  - app/Jobs/ProcessAgentRun.php (modified — added worktree creation/cleanup logic)
+  - tests/Feature/WorktreeIsolationTest.php (new)
+- **Learnings for future iterations:**
+  - `WorktreeManager` lives in `app/Services/` — manages git worktree lifecycle (create, hasNewCommits, remove, cleanup)
+  - Worktree tests need a real git repo — use `sys_get_temp_dir()` with `git init` in `beforeEach`, clean up in `afterEach`
+  - `Process::run()` in tests hits the real shell (not faked) for git operations — these are integration tests
+  - Worktree path convention: `{project}/.worktrees/{rule_id}-{hash}`, branch: `dispatch/{rule_id}/{hash}`
+  - `finally` block ensures worktree cleanup even when executor throws exceptions
+---
+
+## 2026-03-16 - US-019
+- Implemented `OutputHandler` service to route agent output to configured destinations
+- `log: true` — output already saved to `agent_runs.output` by `ProcessAgentRun` (no additional action needed)
+- `github_comment: true` — posts agent output as a comment on the source issue/PR/discussion via `gh api` CLI
+- `github_reaction` — adds a reaction to the triggering comment via `gh api` CLI
+- `resolveGitHubResource()` determines correct resource type (issue, PR, discussion) from webhook payload
+- `resolveCommentResourceType()` maps payload to correct reactions API endpoint (issues/comments, pulls/comments, discussions/comments)
+- Integrated `OutputHandler` into `ProcessAgentRun` job — called after successful execution
+- Fixed pre-existing test failure in `ExecutorTest` — "rule-level agent config" test had `isolation: true` but non-existent project path, causing `WorktreeManager` to fail
+- 12 tests covering: log output, GitHub comment on issue/PR/discussion, GitHub reaction on issue/PR/discussion, no output config, missing repo/comment warnings, combined comment+reaction, resource type resolution
+- Files changed:
+  - app/Services/OutputHandler.php (new)
+  - app/Jobs/ProcessAgentRun.php (modified — integrated OutputHandler after successful execution)
+  - tests/Feature/OutputHandlerTest.php (new)
+  - tests/Feature/ExecutorTest.php (modified — fixed pre-existing worktree test isolation bug)
+- **Learnings for future iterations:**
+  - `Process::assertNothingRan()` is the correct way to assert no processes ran in Laravel 12 (not `assertDidntRun()` which requires a callback)
+  - GitHub API uses `issues/{number}/comments` endpoint for both issues and PRs (PRs are issues in GitHub's API)
+  - Reactions API differs by resource: `issues/comments/{id}/reactions`, `pulls/comments/{id}/reactions`, `discussions/comments/{id}/reactions`
+  - `OutputHandler` is called only on successful execution (`result->status === 'success'`) to avoid posting error output
+  - Tests with `isolation: true` in `RuleAgentConfig` need a real git directory — use `sys_get_temp_dir()` with `git init`
+---
+
+## 2026-03-16 - US-020
+- Implemented `ConversationMemory` service for thread-scoped conversation memory
+- `deriveThreadKey()` extracts a unique thread key from webhook payload: `{repo}:{type}:{number}` (e.g., `owner/repo:issue:42`, `owner/repo:pr:99`)
+- `retrieveHistory()` loads prior successful `AgentRun` outputs for the same thread, chronologically ordered
+- `formatAsText()` converts message history into a readable text format for CLI executors
+- Updated `DispatchAgent` to implement `Conversational` interface with `withConversationHistory()` method for LaravelAiExecutor
+- Updated `Executor` interface to accept optional `$conversationHistory` parameter
+- `LaravelAiExecutor` passes conversation history as `Message` objects to DispatchAgent
+- `ClaudeCliExecutor` prepends formatted conversation history to the rendered prompt
+- `ProcessAgentRun` job loads conversation history via `ConversationMemory` and passes to executor
+- 22 tests covering: thread key derivation (issue, PR, discussion, precedence, edge cases), history retrieval (chronological ordering, exclusion of current run, failed runs, thread isolation), text formatting, LaravelAiExecutor with/without history, ClaudeCliExecutor with/without history, ProcessAgentRun integration with prior runs, no conversation, and no thread scope
+- Files changed:
+  - app/Services/ConversationMemory.php (new)
+  - app/Ai/Agents/DispatchAgent.php (modified — added Conversational interface, withConversationHistory method)
+  - app/Contracts/Executor.php (modified — added optional conversationHistory parameter)
+  - app/Executors/LaravelAiExecutor.php (modified — passes conversation history to agent)
+  - app/Executors/ClaudeCliExecutor.php (modified — prepends history to CLI prompt)
+  - app/Jobs/ProcessAgentRun.php (modified — loads and passes conversation history)
+  - tests/Feature/ConversationMemoryTest.php (new)
+- **Learnings for future iterations:**
+  - `ConversationMemory` uses existing `agent_runs` table for history — no new migrations needed
+  - Thread key derivation follows PR > issue > discussion precedence (PR payloads sometimes also contain `issue`)
+  - For LaravelAiExecutor, use `Conversational` interface with `messages()` returning `Message`/`AssistantMessage` objects
+  - For ClaudeCliExecutor, prepend formatted history text before the current request in the `--prompt` flag
+  - The Executor interface `$conversationHistory` param defaults to `[]` for backward compatibility
+  - `retrieveHistory()` filters by matching thread key via payload inspection, not DB column (thread key is derived at runtime)
+---
+
+## 2026-03-16 - US-021
+- Implemented retry logic for failed agent runs based on rule retry config
+- Added `attempt` column to `agent_runs` table to track attempt number
+- `ProcessAgentRun` job reads `RuleRetryConfig` to set `$tries` and `$backoff` properties
+- When retry is enabled and execution fails, the job throws a `RuntimeException` so the queue worker retries
+- When retry is not enabled (default), failures are recorded without throwing (no retry)
+- `failed()` method updates agent_run to `failed` status after all retries exhausted
+- Attempt number is logged on the agent_run record during each execution
+- 9 tests covering: retry config sets tries/backoff, defaults without config, defaults when disabled, attempt logging, retry throw on failure, no throw without retry, failed() method, success with retry enabled, config values from DB
+- Files changed:
+  - database/migrations/2026_03_16_084436_add_attempt_to_agent_runs_table.php (new)
+  - app/Models/AgentRun.php (modified — added attempt to fillable/casts)
+  - database/factories/AgentRunFactory.php (modified — added attempt default)
+  - app/Jobs/ProcessAgentRun.php (modified — added retry config, attempt tracking, shouldRetry logic)
+  - tests/Feature/RetryLogicTest.php (new)
+- **Learnings for future iterations:**
+  - Laravel's queue retry uses `$tries` and `$backoff` public properties on the job — set them in the constructor
+  - `$this->attempts()` on a job returns the current attempt number (1-based) — available from the `Queueable` trait
+  - When executor catches exceptions and returns `ExecutionResult(status: 'failed')`, you must re-throw for queue retry to work
+  - `shouldRetry()` checks `$this->tries > 1 && $this->attempts() < $this->tries` to avoid throwing on the last attempt
+---
+
+## 2026-03-16 - US-022
+- Implemented dry-run mode for webhook endpoint via `?dry-run=true` query parameter
+- Returns matched rules with rendered prompts without dispatching any agent jobs
+- Response includes `dryRun: true` flag and results array with `rule`, `name`, `prompt` per matched rule
+- Added `PromptRenderer` injection to `WebhookController` for template rendering in dry-run mode
+- Webhook logging and rule matching still execute normally — only job dispatching is skipped
+- 7 tests covering: rendered prompts, no job dispatch, empty matches, multiple rules, webhook logging, normal processing without flag, nested path rendering
+- Files changed:
+  - app/Http/Controllers/WebhookController.php (modified — added dry-run branch with PromptRenderer)
+  - tests/Feature/DryRunModeTest.php (new)
+- **Learnings for future iterations:**
+  - `$request->boolean('dry-run')` handles query parameter parsing cleanly — works with `?dry-run=true`
+  - Dry-run logic is best placed after rule matching but before dispatching — reuses existing matching pipeline
+  - PromptRenderer was already available as a service — just needed DI in the controller
+---
+
+## 2026-03-16 - US-023
+- Implemented `dispatch:health` Artisan command to verify system dependencies
+- Checks `gh` CLI is installed and authenticated via `gh auth status`
+- Checks Redis is reachable via `Redis::ping()`
+- Checks all registered project paths exist on disk
+- Checks `dispatch.yml` is present and valid for each project (via ConfigLoader)
+- Reports PASS/FAIL per check with actionable error messages
+- Returns exit code 0 on all pass, 1 on any failure
+- 9 tests covering: all healthy, gh not authenticated, gh not installed, Redis unreachable, missing project path, missing dispatch.yml, invalid dispatch.yml, no projects, mixed pass/fail states
+- Files changed:
+  - app/Console/Commands/HealthCheckCommand.php (new)
+  - tests/Feature/HealthCheckTest.php (new)
+- **Learnings for future iterations:**
+  - `expectsOutputToContain` in Artisan command tests does NOT reliably match all output — use `Artisan::call()` + `Artisan::output()` with Pest `expect()->toContain()` instead
+  - `Process::fake()` with string key patterns (e.g., `'gh auth status'`) may not match — use `'*'` wildcard for single-process tests
+  - `Redis::shouldReceive('ping')` with Mockery works for faking Redis connectivity checks
+  - `$this->line()` is preferred over `$this->error()` or `$this->info()` for mixed-status output lines — avoids formatting issues in tests
+---
+
+## 2026-03-16 - US-024
+- Implemented Project Management UI as a Volt single-file component at `resources/views/pages/projects/⚡index.blade.php`
+- Lists all registered projects with repo and path
+- Add project via modal form with repo + path validation (path must exist on disk, repo must be unique)
+- Remove project with inline confirmation (two-click delete pattern)
+- Import config from `dispatch.yml` via ConfigSyncer service
+- Export config to `dispatch.yml` via ConfigSyncer service
+- Status/error messages displayed via Flux callout components
+- Added "Projects" nav item to sidebar layout
+- Added route at `/projects` (auth + verified middleware)
+- Built with Livewire/Volt class-based pattern, Flux UI components, Tailwind CSS v4
+- 13 tests covering: auth, listing, empty state, add/remove, validation (unique repo, path exists, required fields), import/export with mocked ConfigSyncer, error handling
+- Files changed:
+  - resources/views/pages/projects/⚡index.blade.php (new)
+  - resources/views/layouts/app/sidebar.blade.php (modified — added Projects nav item)
+  - routes/web.php (modified — added projects route)
+  - tests/Feature/ProjectManagementUiTest.php (new)
+- **Learnings for future iterations:**
+  - Volt page components must have a single root HTML element — `<x-layouts::app>` expands to a full document and causes `MultipleRootElementsDetectedException`; use `<section>` as root and let the layout be set via `Route::livewire()`
+  - `session()->flash()` is not testable via `Volt::test()` — use public properties (`$statusMessage`, `$errorMessage`) for component-level messages instead
+  - Mockery can't mock readonly DTO classes like `DispatchConfig` — mock the service returning them and provide real DTO instances via `andReturn()`
+  - Volt page files use `⚡` prefix (Unicode lightning bolt) for auto-discovery
+  - `Route::livewire('path', 'pages::namespace.component')` registers Volt page routes
+  - Use `assertSet('property', 'value')` for testing Livewire component public properties
+---
+
+## 2026-03-16 - US-025
+- Implemented Rules & Filters Management UI as a Volt single-file component at `resources/views/pages/rules/⚡index.blade.php`
+- Lists all rules for a project ordered by sort_order with event type, name, circuit break badge
+- Create, edit, and delete rules via modal forms with validation (unique rule_id per project)
+- Manage filters per rule: add, edit, remove with operator validation against FilterOperator enum
+- Configure agent settings per rule: provider, model, max tokens, tools, disallowed tools, isolation
+- Configure output settings per rule: log, GitHub comment, GitHub reaction
+- Configure retry settings per rule: enabled, max attempts, delay
+- Prompt template preview with extracted template variables display
+- Added "Rules" link to each project in the Projects UI for navigation
+- Route at `/projects/{project}/rules` with auth + verified middleware
+- 26 tests covering: auth, listing, CRUD for rules/filters, validation, agent/output/retry config, prompt preview, status messages, cross-project isolation
+- Files changed:
+  - resources/views/pages/rules/⚡index.blade.php (new)
+  - resources/views/pages/projects/⚡index.blade.php (modified — added Rules link per project)
+  - routes/web.php (modified — added rules route)
+  - tests/Feature/RulesFiltersUiTest.php (new)
+- **Learnings for future iterations:**
+  - Blade `{{ }}` in HTML attribute placeholders causes parse errors — use plain text placeholders instead
+  - `name` column in rules table is NOT NULL — pass empty string not null when name is optional in UI
+  - Rule uniqueness validation scoped to project: `Rule::unique('rules', 'rule_id')->where('project_id', $projectId)`
+  - `updateOrCreate` works well for all three config types (agent, output, retry) — matches on `rule_id`
+  - Volt component `mount()` receives route parameters — use `{project}` route param to scope to a project
+  - `getTemplateVariables()` extracts `{{ event.* }}` template variables via regex for preview display
+---
+
+## 2026-03-16 - US-026
+- Implemented Webhook Log Viewer & Agent Run Monitoring UI with two Volt pages
+- List page (`webhooks/index`): displays all webhook logs in a table with event type, repo, matched rules count, status, timestamp
+- Filtering by repo, event type, and status via `<flux:select>` dropdowns with `wire:model.live`
+- Detail page (`webhooks/show`): summary cards, matched rules, agent runs table, full JSON payload
+- Agent run detail modal shows status, attempt, duration, tokens, cost, output, and error
+- Auto-refresh via `wire:poll.5s` when any agent runs are in `queued` or `running` status
+- Added "Webhook Logs" sidebar nav item with inbox icon
+- Routes at `/webhooks` and `/webhooks/{webhookLog}` with auth + verified middleware
+- 17 tests covering: auth, listing, empty state, filtering (repo, event type, status), clear filters, detail page, payload display, agent run metrics, agent run detail modal, error display, polling detection, not found
+- Files changed:
+  - resources/views/pages/webhooks/⚡index.blade.php (new)
+  - resources/views/pages/webhooks/⚡show.blade.php (new)
+  - resources/views/layouts/app/sidebar.blade.php (modified — added Webhook Logs nav item)
+  - routes/web.php (modified — added webhook routes)
+  - tests/Feature/WebhookLogViewerUiTest.php (new)
+- **Learnings for future iterations:**
+  - Filter dropdowns populate from DB distinct values — `assertDontSee` on filtered-out values fails because they still appear in dropdown options
+  - For filter tests, use `$component->instance()->getLogs()` to verify the query results instead of `assertDontSee`
+  - `wire:poll.5s` conditional polling via `@if` directive works for auto-refresh on in-progress runs
+  - `withCount('agentRuns')` adds `agent_runs_count` for efficient matched rules display without N+1
+  - Webhook log detail uses `{webhookLog}` route param matching the model name for implicit binding
+---
+
+## 2026-03-16 - US-027
+- Implemented config caching for parsed dispatch.yml configs
+- Added `cache_config` boolean column to `projects` table via migration
+- Updated `ConfigLoader` with `load()` (cache-aware), `loadFromDisk()` (bypass cache), `clearCache()`, and `cacheKey()` methods
+- Uses Laravel Cache facade with `dispatch:config:{md5(path)}` cache keys
+- Config is cached only when `cache.config: true` in dispatch.yml
+- Updated `ConfigSyncer` to invalidate cache on import/export and sync `cache_config` to DB
+- `buildConfigFromDatabase()` now reads actual `cache_config` from project instead of hardcoding false
+- Created `dispatch:clear-cache {repo?}` Artisan command to clear cache for one or all projects
+- 14 tests covering: caching enabled/disabled, cached returns, cache clearing, cache key consistency, import/export invalidation, command behavior, DB sync, round-trip export
+- Files changed:
+  - database/migrations/2026_03_16_092257_add_cache_config_to_projects_table.php (new)
+  - app/Models/Project.php (modified — added cache_config to fillable/casts)
+  - app/Services/ConfigLoader.php (modified — added caching layer)
+  - app/Services/ConfigSyncer.php (modified — cache invalidation + cache_config sync)
+  - app/Console/Commands/ClearCacheCommand.php (new)
+  - tests/Feature/ConfigCachingTest.php (new)
+- **Learnings for future iterations:**
+  - Pest global functions defined at file level can conflict across test files — use unique function names per test file (e.g., `writeCacheConfig` vs `writeConfig`)
+  - `ConfigLoader::load()` now has two behaviors: cache-aware (default) and `loadFromDisk()` for bypassing cache — use `loadFromDisk()` in import operations
+  - Cache keys use md5 of normalized path (trailing slash stripped) for consistency
+  - The `cache.config` field was already parsed by ConfigLoader and stored in DispatchConfig DTO — just needed the caching logic and DB persistence
+---
+
+## 2026-03-16 - US-028
+- Implemented `dispatch:seed-defaults {repo}` command that seeds 5 default sparky-nano rules
+- Rules: `analyze` (issues.labeled), `discuss` (discussion_comment.created), `implement` (issue_comment.created, full tools, isolation), `interactive` (issue_comment.created, read-only + bash), `review` (pull_request_review_comment.created)
+- Each rule includes filters, agent config (tools/isolation), output config (log + github_comment + reaction), and prompt templates with `{{ event.* }}` placeholders
+- Skips rules that already exist (with warning), exports to dispatch.yml after seeding
+- 7 tests covering: seeding all rules, filters, agent config, output config, missing project, skip existing rules, YAML export
+- Files changed:
+  - app/Console/Commands/SeedDefaultsCommand.php (new)
+  - tests/Feature/SeedDefaultsTest.php (new)
+- **Learnings for future iterations:**
+  - `FilterOperator::Equals->value` gives the string value for direct DB storage — no need to pass enum instance when creating via model
+  - ConfigSyncer `export()` handles the full export pipeline including cache clearing — just call it after seeding
+  - The `getDefaultRules()` method keeps seed data self-contained in the command — good pattern for seed commands
+---

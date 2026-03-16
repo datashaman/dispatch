@@ -1,0 +1,154 @@
+---
+version: 1
+agent:
+  name: dispatch
+  executor: laravel-ai
+  instructions_file: CLAUDE.md
+  provider: anthropic
+  model: claude-sonnet-4-6
+  secrets:
+    api_key: ANTHROPIC_API_KEY
+cache:
+  config: true
+rules:
+  -
+    id: analyze
+    event: issues.labeled
+    name: Analyze Issue
+    prompt: |-
+      You are triaging issue #{{ event.issue.number }} on the Dispatch project.
+
+      Title: {{ event.issue.title }}
+      Body:
+      {{ event.issue.body }}
+
+      Analyze the issue and produce a detailed plan. Consider:
+      1. What files and components are likely involved
+      2. What changes are needed
+      3. Potential risks or edge cases
+      4. A step-by-step implementation plan
+
+      Post your analysis as a comment on the issue.
+    filters:
+      -
+        id: label-dispatch
+        field: event.label.name
+        operator: equals
+        value: dispatch
+    agent:
+      tools:
+        - Read
+        - Glob
+        - Grep
+        - Bash
+    output:
+      log: true
+      github_comment: true
+      github_reaction: eyes
+  -
+    id: implement
+    event: issue_comment.created
+    name: Implement Plan
+    sort_order: 1
+    prompt: |-
+      You are implementing the approved plan for issue #{{ event.issue.number }}.
+
+      Issue title: {{ event.issue.title }}
+      Issue body:
+      {{ event.issue.body }}
+
+      Trigger comment by {{ event.comment.user.login }}:
+      {{ event.comment.body }}
+
+      Read the issue and prior comments for the analysis and plan.
+      Implement the changes, commit them, and create a pull request.
+      Use `gh` CLI for GitHub operations (creating PRs, posting comments).
+    filters:
+      -
+        id: dispatch-implement
+        field: event.comment.body
+        operator: contains
+        value: '@dispatch implement'
+    agent:
+      tools:
+        - Read
+        - Edit
+        - Write
+        - Bash
+        - Glob
+        - Grep
+      isolation: true
+    output:
+      log: true
+      github_comment: true
+      github_reaction: rocket
+  -
+    id: interactive
+    event: issue_comment.created
+    name: Interactive Q&A
+    sort_order: 2
+    prompt: |-
+      You are responding to a question or comment on issue #{{ event.issue.number }}.
+
+      Issue title: {{ event.issue.title }}
+      Issue body:
+      {{ event.issue.body }}
+
+      Comment by {{ event.comment.user.login }}:
+      {{ event.comment.body }}
+
+      Respond helpfully. You can read the codebase to answer questions.
+      Use `gh` CLI for any GitHub interactions.
+    filters:
+      -
+        id: mentions-dispatch
+        field: event.comment.body
+        operator: contains
+        value: '@dispatch'
+      -
+        id: not-implement
+        field: event.comment.body
+        operator: not_contains
+        value: '@dispatch implement'
+    agent:
+      tools:
+        - Read
+        - Glob
+        - Grep
+        - Bash
+    output:
+      log: true
+      github_comment: true
+  -
+    id: review
+    event: pull_request_review_comment.created
+    name: Code Review Responder
+    prompt: |-
+      You are responding to a PR review comment on the Dispatch project.
+
+      PR: #{{ event.pull_request.number }} — {{ event.pull_request.title }}
+
+      Review comment by {{ event.comment.user.login }}:
+      {{ event.comment.body }}
+
+      File: {{ event.comment.path }}
+      Diff hunk:
+      {{ event.comment.diff_hunk }}
+
+      Respond to the review feedback. You can read the codebase for context.
+      Use `gh` CLI for any GitHub interactions.
+    filters:
+      -
+        id: mentions-dispatch
+        field: event.comment.body
+        operator: contains
+        value: '@dispatch'
+    agent:
+      tools:
+        - Read
+        - Glob
+        - Grep
+        - Bash
+    output:
+      log: true
+      github_comment: true
