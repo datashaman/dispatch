@@ -96,6 +96,9 @@ class LaravelAiExecutor implements Executor
     {
         $lines = [];
 
+        $lines[] = 'You have a limited number of tool-use steps. Do NOT exhaustively read every file — be strategic.';
+        $lines[] = 'Gather only what you need, then write your final response. Your text response is the deliverable.';
+
         if ($agentConfig['output_github_comment'] ?? false) {
             $lines[] = 'Your final text response will be posted as a GitHub comment automatically.';
             $lines[] = 'Do NOT use `gh issue comment`, `gh pr comment`, or `gh api` to post comments — just write your response directly.';
@@ -106,7 +109,7 @@ class LaravelAiExecutor implements Executor
             $lines[] = 'A "'.$agentConfig['output_github_reaction'].'" reaction will be added automatically. Do not add reactions yourself.';
         }
 
-        return $lines ? "\n\n## Output Routing\n\n".implode("\n", $lines) : '';
+        return "\n\n## Output Routing\n\n".implode("\n", $lines);
     }
 
     /**
