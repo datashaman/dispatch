@@ -3,7 +3,7 @@ version: 1
 agent:
   name: dispatch
   executor: laravel-ai
-  instructions_file: DISPATCH.md
+  instructions_file: CLAUDE.md
   provider: anthropic
   model: claude-sonnet-4-6
   secrets:
