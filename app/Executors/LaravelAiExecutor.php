@@ -6,20 +6,28 @@ use App\Ai\Agents\DispatchAgent;
 use App\Contracts\Executor;
 use App\DataTransferObjects\ExecutionResult;
 use App\Models\AgentRun;
+use App\Services\ToolRegistry;
 use Illuminate\Support\Facades\File;
+use Laravel\Ai\Contracts\Tool;
 use Throwable;
 
 class LaravelAiExecutor implements Executor
 {
+    public function __construct(
+        protected ToolRegistry $toolRegistry,
+    ) {}
+
     public function execute(AgentRun $run, string $renderedPrompt, array $agentConfig): ExecutionResult
     {
         $startTime = hrtime(true);
 
         try {
             $systemPrompt = $this->loadSystemPrompt($agentConfig);
+            $tools = $this->resolveTools($agentConfig);
 
             $agent = new DispatchAgent(
                 systemPrompt: $systemPrompt,
+                agentTools: $tools,
             );
 
             $provider = $agentConfig['provider'] ?? null;
@@ -70,5 +78,22 @@ class LaravelAiExecutor implements Executor
         }
 
         return 'You are a helpful AI assistant.';
+    }
+
+    /**
+     * Resolve tool instances from the agent config.
+     *
+     * @param  array<string, mixed>  $agentConfig
+     * @return list<Tool>
+     */
+    protected function resolveTools(array $agentConfig): array
+    {
+        $workingDirectory = $agentConfig['project_path'] ?? '';
+
+        return $this->toolRegistry->resolve(
+            allowedTools: $agentConfig['tools'] ?? [],
+            disallowedTools: $agentConfig['disallowed_tools'] ?? [],
+            workingDirectory: $workingDirectory,
+        );
     }
 }

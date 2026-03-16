@@ -14,7 +14,7 @@ use Laravel\Ai\Contracts\Agent;
 use Laravel\Ai\Contracts\HasTools;
 
 test('Executor interface has execute method', function () {
-    $executor = new LaravelAiExecutor;
+    $executor = app(LaravelAiExecutor::class);
 
     expect($executor)->toBeInstanceOf(Executor::class);
 });
@@ -67,7 +67,7 @@ test('LaravelAiExecutor executes agent and returns success result', function () 
         'created_at' => now(),
     ]);
 
-    $executor = new LaravelAiExecutor;
+    $executor = app(LaravelAiExecutor::class);
     $result = $executor->execute($agentRun, 'Analyze this code', [
         'provider' => 'anthropic',
         'model' => 'claude-sonnet-4-20250514',
@@ -98,7 +98,7 @@ test('LaravelAiExecutor returns failure result on exception', function () {
         'created_at' => now(),
     ]);
 
-    $executor = new LaravelAiExecutor;
+    $executor = app(LaravelAiExecutor::class);
     $result = $executor->execute($agentRun, 'Analyze this code', [
         'provider' => 'anthropic',
         'model' => 'claude-sonnet-4-20250514',
@@ -132,7 +132,7 @@ test('LaravelAiExecutor loads system prompt from instructions file', function ()
         'created_at' => now(),
     ]);
 
-    $executor = new LaravelAiExecutor;
+    $executor = app(LaravelAiExecutor::class);
     $result = $executor->execute($agentRun, 'Review this PR', [
         'provider' => 'anthropic',
         'model' => 'claude-sonnet-4-20250514',
@@ -168,7 +168,7 @@ test('LaravelAiExecutor uses default prompt when instructions file is missing', 
         'created_at' => now(),
     ]);
 
-    $executor = new LaravelAiExecutor;
+    $executor = app(LaravelAiExecutor::class);
     $result = $executor->execute($agentRun, 'Do something', [
         'instructions_file' => 'nonexistent.md',
         'project_path' => '/nonexistent/path',
@@ -196,7 +196,7 @@ test('LaravelAiExecutor passes provider to agent prompt', function () {
         'created_at' => now(),
     ]);
 
-    $executor = new LaravelAiExecutor;
+    $executor = app(LaravelAiExecutor::class);
     $result = $executor->execute($agentRun, 'Hello', [
         'provider' => 'openai',
         'model' => 'gpt-4o',
