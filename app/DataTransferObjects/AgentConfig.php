@@ -12,6 +12,7 @@ readonly class AgentConfig
         public ?string $provider = null,
         public ?string $model = null,
         public ?int $maxTokens = null,
+        public ?int $maxSteps = null,
         public ?array $tools = null,
         public ?array $disallowedTools = null,
         public bool $isolation = false,

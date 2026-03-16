@@ -17,6 +17,7 @@ class RuleAgentConfig extends Model
         'provider',
         'model',
         'max_tokens',
+        'max_steps',
         'tools',
         'disallowed_tools',
         'isolation',
@@ -26,6 +27,7 @@ class RuleAgentConfig extends Model
     {
         return [
             'max_tokens' => 'integer',
+            'max_steps' => 'integer',
             'tools' => 'array',
             'disallowed_tools' => 'array',
             'isolation' => 'boolean',

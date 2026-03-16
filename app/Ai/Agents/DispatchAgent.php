@@ -2,6 +2,7 @@
 
 namespace App\Ai\Agents;
 
+use Laravel\Ai\Attributes\MaxSteps;
 use Laravel\Ai\Contracts\Agent;
 use Laravel\Ai\Contracts\Conversational;
 use Laravel\Ai\Contracts\HasTools;
@@ -11,6 +12,7 @@ use Laravel\Ai\Messages\Message;
 use Laravel\Ai\Promptable;
 use Stringable;
 
+#[MaxSteps(25)]
 class DispatchAgent implements Agent, Conversational, HasTools
 {
     use Promptable;
