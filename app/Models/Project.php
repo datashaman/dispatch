@@ -15,7 +15,20 @@ class Project extends Model
     protected $fillable = [
         'repo',
         'path',
+        'agent_name',
+        'agent_executor',
+        'agent_provider',
+        'agent_model',
+        'agent_instructions_file',
+        'agent_secrets',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'agent_secrets' => 'array',
+        ];
+    }
 
     /**
      * @return HasMany<Rule, $this>
