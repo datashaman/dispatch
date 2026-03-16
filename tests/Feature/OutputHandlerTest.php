@@ -166,9 +166,8 @@ test('github_comment without repo logs warning', function () {
     Process::assertNothingRan();
 });
 
-test('addReaction without comment logs warning', function () {
+test('addReaction falls back to issue reaction when no comment', function () {
     Process::fake();
-    Log::shouldReceive('warning')->once()->with('No comment ID found in payload for GitHub reaction');
 
     $payload = [
         'repository' => ['full_name' => 'owner/repo'],
@@ -177,7 +176,9 @@ test('addReaction without comment logs warning', function () {
 
     $this->handler->addReaction('eyes', $payload);
 
-    Process::assertNothingRan();
+    Process::assertRan(function ($process) {
+        return str_contains($process->command[4] ?? '', '/repos/owner/repo/issues/42/reactions');
+    });
 });
 
 test('both github_comment and github_reaction can be configured together', function () {

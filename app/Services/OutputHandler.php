@@ -89,20 +89,28 @@ class OutputHandler
             return;
         }
 
+        // Try comment reaction first, fall back to issue/PR reaction
         $commentId = $payload['comment']['id'] ?? null;
 
-        if (! $commentId) {
-            Log::warning('No comment ID found in payload for GitHub reaction');
+        if ($commentId) {
+            $resourceType = $this->resolveCommentResourceType($payload);
+            $endpoint = "/repos/{$repo}/{$resourceType}/{$commentId}/reactions";
+        } else {
+            $resource = $this->resolveGitHubResource($payload);
 
-            return;
+            if (! $resource) {
+                Log::warning('No reactable resource found in payload for GitHub reaction');
+
+                return;
+            }
+
+            $endpoint = "/repos/{$repo}/{$resource['type']}/{$resource['number']}/reactions";
         }
-
-        $resourceType = $this->resolveCommentResourceType($payload);
 
         $result = Process::run([
             'gh', 'api',
             '-X', 'POST',
-            "/repos/{$repo}/{$resourceType}/{$commentId}/reactions",
+            $endpoint,
             '-f', "content={$reaction}",
         ]);
 

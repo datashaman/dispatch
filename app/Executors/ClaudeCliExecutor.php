@@ -7,6 +7,7 @@ use App\DataTransferObjects\ExecutionResult;
 use App\Models\AgentRun;
 use App\Services\ConversationMemory;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
 use Throwable;
 
@@ -21,6 +22,22 @@ class ClaudeCliExecutor implements Executor
             $command = $this->buildCommand($promptWithHistory, $agentConfig);
             $workingDirectory = $agentConfig['project_path'] ?? getcwd();
 
+            Log::info('ClaudeCliExecutor: starting execution', [
+                'agent_run_id' => $run->id,
+                'working_directory' => $workingDirectory,
+                'command_args' => $this->redactCommand($command),
+                'prompt_length' => strlen($renderedPrompt),
+                'history_entries' => count($conversationHistory),
+                'model' => $agentConfig['model'] ?? 'default',
+                'tools' => $agentConfig['tools'] ?? [],
+                'disallowed_tools' => $agentConfig['disallowed_tools'] ?? [],
+            ]);
+
+            Log::info('ClaudeCliExecutor: running command', [
+                'agent_run_id' => $run->id,
+                'full_command' => implode(' ', array_map('escapeshellarg', $command)),
+            ]);
+
             $result = Process::path($workingDirectory)
                 ->timeout(600)
                 ->run($command);
@@ -28,6 +45,24 @@ class ClaudeCliExecutor implements Executor
             $durationMs = (int) ((hrtime(true) - $startTime) / 1_000_000);
 
             $output = trim($result->output());
+            $stderr = trim($result->errorOutput());
+
+            Log::info('ClaudeCliExecutor: command completed', [
+                'agent_run_id' => $run->id,
+                'exit_code' => $result->exitCode(),
+                'successful' => $result->successful(),
+                'duration_ms' => $durationMs,
+                'output_length' => strlen($output),
+                'stderr_length' => strlen($stderr),
+                'output_preview' => substr($output, 0, 500),
+            ]);
+
+            if ($stderr) {
+                Log::warning('ClaudeCliExecutor: stderr output', [
+                    'agent_run_id' => $run->id,
+                    'stderr' => substr($stderr, 0, 1000),
+                ]);
+            }
 
             if ($result->successful()) {
                 return new ExecutionResult(
@@ -37,14 +72,28 @@ class ClaudeCliExecutor implements Executor
                 );
             }
 
+            Log::error('ClaudeCliExecutor: command failed', [
+                'agent_run_id' => $run->id,
+                'exit_code' => $result->exitCode(),
+                'error' => $stderr ?: 'No stderr output',
+                'output' => substr($output, 0, 1000),
+            ]);
+
             return new ExecutionResult(
                 status: 'failed',
                 output: $output,
-                error: trim($result->errorOutput()) ?: 'Claude CLI exited with code '.$result->exitCode(),
+                error: $stderr ?: 'Claude CLI exited with code '.$result->exitCode(),
                 durationMs: $durationMs,
             );
         } catch (Throwable $e) {
             $durationMs = (int) ((hrtime(true) - $startTime) / 1_000_000);
+
+            Log::error('ClaudeCliExecutor: exception during execution', [
+                'agent_run_id' => $run->id,
+                'exception' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'duration_ms' => $durationMs,
+            ]);
 
             return new ExecutionResult(
                 status: 'failed',
@@ -68,6 +117,11 @@ class ClaudeCliExecutor implements Executor
         if ($systemPrompt !== null) {
             $command[] = '--system-prompt';
             $command[] = $systemPrompt;
+
+            Log::debug('ClaudeCliExecutor: system prompt loaded', [
+                'length' => strlen($systemPrompt),
+                'source' => $agentConfig['instructions_file'] ?? 'inline',
+            ]);
         }
 
         $model = $agentConfig['model'] ?? null;
@@ -132,8 +186,44 @@ class ClaudeCliExecutor implements Executor
             if (File::exists($fullPath)) {
                 return File::get($fullPath);
             }
+
+            Log::warning('ClaudeCliExecutor: instructions file not found', [
+                'path' => $fullPath,
+            ]);
         }
 
         return null;
+    }
+
+    /**
+     * Redact the prompt from the command for logging (it can be very long).
+     *
+     * @param  list<string>  $command
+     * @return list<string>
+     */
+    protected function redactCommand(array $command): array
+    {
+        $redacted = [];
+        $skipNext = false;
+
+        foreach ($command as $arg) {
+            if ($skipNext) {
+                $redacted[] = '[REDACTED '.strlen($arg).' chars]';
+                $skipNext = false;
+
+                continue;
+            }
+
+            if ($arg === '--prompt' || $arg === '--system-prompt') {
+                $redacted[] = $arg;
+                $skipNext = true;
+
+                continue;
+            }
+
+            $redacted[] = $arg;
+        }
+
+        return $redacted;
     }
 }
