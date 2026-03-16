@@ -285,6 +285,9 @@
 - `OutputHandler` routes agent output after successful execution — log (default), GitHub comment, GitHub reaction
 - `Process::assertNothingRan()` is correct for asserting no processes ran (not `assertDidntRun()` without args)
 - Tests with `isolation: true` in `RuleAgentConfig` need a real git directory via `sys_get_temp_dir()` + `git init`
+- `ConversationMemory` derives thread keys from webhook payloads: `{repo}:{type}:{number}` — use for any thread-scoped feature
+- Executor interface accepts optional `$conversationHistory` array — backward compatible with `[]` default
+- `DispatchAgent` implements `Conversational` — set history via `withConversationHistory()` before `prompt()`
 ---
 
 ## 2026-03-16 - US-015
@@ -409,4 +412,54 @@
   - Reactions API differs by resource: `issues/comments/{id}/reactions`, `pulls/comments/{id}/reactions`, `discussions/comments/{id}/reactions`
   - `OutputHandler` is called only on successful execution (`result->status === 'success'`) to avoid posting error output
   - Tests with `isolation: true` in `RuleAgentConfig` need a real git directory — use `sys_get_temp_dir()` with `git init`
+---
+
+## 2026-03-16 - US-020
+- Implemented `ConversationMemory` service for thread-scoped conversation memory
+- `deriveThreadKey()` extracts a unique thread key from webhook payload: `{repo}:{type}:{number}` (e.g., `owner/repo:issue:42`, `owner/repo:pr:99`)
+- `retrieveHistory()` loads prior successful `AgentRun` outputs for the same thread, chronologically ordered
+- `formatAsText()` converts message history into a readable text format for CLI executors
+- Updated `DispatchAgent` to implement `Conversational` interface with `withConversationHistory()` method for LaravelAiExecutor
+- Updated `Executor` interface to accept optional `$conversationHistory` parameter
+- `LaravelAiExecutor` passes conversation history as `Message` objects to DispatchAgent
+- `ClaudeCliExecutor` prepends formatted conversation history to the rendered prompt
+- `ProcessAgentRun` job loads conversation history via `ConversationMemory` and passes to executor
+- 22 tests covering: thread key derivation (issue, PR, discussion, precedence, edge cases), history retrieval (chronological ordering, exclusion of current run, failed runs, thread isolation), text formatting, LaravelAiExecutor with/without history, ClaudeCliExecutor with/without history, ProcessAgentRun integration with prior runs, no conversation, and no thread scope
+- Files changed:
+  - app/Services/ConversationMemory.php (new)
+  - app/Ai/Agents/DispatchAgent.php (modified — added Conversational interface, withConversationHistory method)
+  - app/Contracts/Executor.php (modified — added optional conversationHistory parameter)
+  - app/Executors/LaravelAiExecutor.php (modified — passes conversation history to agent)
+  - app/Executors/ClaudeCliExecutor.php (modified — prepends history to CLI prompt)
+  - app/Jobs/ProcessAgentRun.php (modified — loads and passes conversation history)
+  - tests/Feature/ConversationMemoryTest.php (new)
+- **Learnings for future iterations:**
+  - `ConversationMemory` uses existing `agent_runs` table for history — no new migrations needed
+  - Thread key derivation follows PR > issue > discussion precedence (PR payloads sometimes also contain `issue`)
+  - For LaravelAiExecutor, use `Conversational` interface with `messages()` returning `Message`/`AssistantMessage` objects
+  - For ClaudeCliExecutor, prepend formatted history text before the current request in the `--prompt` flag
+  - The Executor interface `$conversationHistory` param defaults to `[]` for backward compatibility
+  - `retrieveHistory()` filters by matching thread key via payload inspection, not DB column (thread key is derived at runtime)
+---
+
+## 2026-03-16 - US-021
+- Implemented retry logic for failed agent runs based on rule retry config
+- Added `attempt` column to `agent_runs` table to track attempt number
+- `ProcessAgentRun` job reads `RuleRetryConfig` to set `$tries` and `$backoff` properties
+- When retry is enabled and execution fails, the job throws a `RuntimeException` so the queue worker retries
+- When retry is not enabled (default), failures are recorded without throwing (no retry)
+- `failed()` method updates agent_run to `failed` status after all retries exhausted
+- Attempt number is logged on the agent_run record during each execution
+- 9 tests covering: retry config sets tries/backoff, defaults without config, defaults when disabled, attempt logging, retry throw on failure, no throw without retry, failed() method, success with retry enabled, config values from DB
+- Files changed:
+  - database/migrations/2026_03_16_084436_add_attempt_to_agent_runs_table.php (new)
+  - app/Models/AgentRun.php (modified — added attempt to fillable/casts)
+  - database/factories/AgentRunFactory.php (modified — added attempt default)
+  - app/Jobs/ProcessAgentRun.php (modified — added retry config, attempt tracking, shouldRetry logic)
+  - tests/Feature/RetryLogicTest.php (new)
+- **Learnings for future iterations:**
+  - Laravel's queue retry uses `$tries` and `$backoff` public properties on the job — set them in the constructor
+  - `$this->attempts()` on a job returns the current attempt number (1-based) — available from the `Queueable` trait
+  - When executor catches exceptions and returns `ExecutionResult(status: 'failed')`, you must re-throw for queue retry to work
+  - `shouldRetry()` checks `$this->tries > 1 && $this->attempts() < $this->tries` to avoid throwing on the last attempt
 ---

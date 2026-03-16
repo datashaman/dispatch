@@ -19,6 +19,10 @@ class ProcessAgentRun implements ShouldQueue
 {
     use Queueable;
 
+    public int $tries = 1;
+
+    public int $backoff = 0;
+
     /**
      * @param  array<string, mixed>  $payload
      */
@@ -28,6 +32,7 @@ class ProcessAgentRun implements ShouldQueue
         public array $payload = [],
     ) {
         $this->onQueue('agents');
+        $this->configureRetry();
     }
 
     /**
@@ -35,7 +40,11 @@ class ProcessAgentRun implements ShouldQueue
      */
     public function handle(): void
     {
-        $this->agentRun->update(['status' => 'running']);
+        $attempt = $this->attempts();
+        $this->agentRun->update([
+            'status' => 'running',
+            'attempt' => $attempt,
+        ]);
 
         $executor = $this->resolveExecutor();
         $renderedPrompt = app(PromptRenderer::class)->render(
@@ -70,6 +79,8 @@ class ProcessAgentRun implements ShouldQueue
                     $this->rule,
                     $this->payload,
                 );
+            } elseif ($result->status === 'failed' && $this->shouldRetry()) {
+                throw new \RuntimeException($result->error ?? 'Agent execution failed');
             }
         } finally {
             if ($worktree) {
@@ -79,14 +90,36 @@ class ProcessAgentRun implements ShouldQueue
     }
 
     /**
-     * Handle a job failure.
+     * Handle a job failure (called only after all retries are exhausted).
      */
     public function failed(?\Throwable $exception): void
     {
         $this->agentRun->update([
             'status' => 'failed',
+            'attempt' => $this->attempts(),
             'error' => $exception?->getMessage(),
         ]);
+    }
+
+    /**
+     * Configure retry behavior from the rule's retry config.
+     */
+    protected function configureRetry(): void
+    {
+        $retryConfig = $this->rule->retryConfig;
+
+        if ($retryConfig && $retryConfig->enabled) {
+            $this->tries = $retryConfig->max_attempts;
+            $this->backoff = $retryConfig->delay;
+        }
+    }
+
+    /**
+     * Determine if the job should be retried (more attempts remaining).
+     */
+    protected function shouldRetry(): bool
+    {
+        return $this->tries > 1 && $this->attempts() < $this->tries;
     }
 
     /**

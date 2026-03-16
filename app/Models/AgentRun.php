@@ -17,6 +17,7 @@ class AgentRun extends Model
     protected $fillable = [
         'webhook_log_id',
         'rule_id',
+        'attempt',
         'status',
         'output',
         'tokens_used',
@@ -28,6 +29,7 @@ class AgentRun extends Model
     protected function casts(): array
     {
         return [
+            'attempt' => 'integer',
             'tokens_used' => 'integer',
             'cost' => 'decimal:6',
             'duration_ms' => 'integer',

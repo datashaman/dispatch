@@ -327,7 +327,8 @@
         "Tests for memory scoping and retrieval"
       ],
       "priority": 20,
-      "passes": false
+      "passes": true,
+      "inProgress": false
     },
     {
       "id": "US-021",
@@ -341,7 +342,8 @@
         "Tests for retry behavior"
       ],
       "priority": 21,
-      "passes": false
+      "passes": true,
+      "inProgress": false
     },
     {
       "id": "US-022",

@@ -16,6 +16,7 @@ class AgentRunFactory extends Factory
         return [
             'webhook_log_id' => WebhookLog::factory(),
             'rule_id' => fake()->slug(2),
+            'attempt' => 1,
             'status' => 'queued',
             'output' => null,
             'tokens_used' => null,
