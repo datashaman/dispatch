@@ -12,7 +12,7 @@ use Laravel\Ai\Messages\Message;
 use Laravel\Ai\Promptable;
 use Stringable;
 
-#[MaxSteps(25)]
+#[MaxSteps(50)]
 class DispatchAgent implements Agent, Conversational, HasTools
 {
     use Promptable;
