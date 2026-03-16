@@ -114,8 +114,8 @@ class SparkyNanoSeeder extends Seeder
                     ],
                 ],
                 'agent_config' => [
-                    'tools' => ['read', 'glob', 'grep', 'bash'],
-                    'disallowed_tools' => ['edit', 'write'],
+                    'tools' => ['Read', 'Glob', 'Grep', 'Bash'],
+                    'disallowed_tools' => [],
                     'isolation' => false,
                 ],
                 'output_config' => [
@@ -146,8 +146,8 @@ class SparkyNanoSeeder extends Seeder
                     ],
                 ],
                 'agent_config' => [
-                    'tools' => ['bash'],
-                    'disallowed_tools' => ['read', 'edit', 'write', 'glob', 'grep'],
+                    'tools' => ['Bash'],
+                    'disallowed_tools' => [],
                     'isolation' => false,
                 ],
                 'output_config' => [
@@ -183,7 +183,7 @@ class SparkyNanoSeeder extends Seeder
                     ],
                 ],
                 'agent_config' => [
-                    'tools' => ['read', 'edit', 'write', 'bash', 'glob', 'grep'],
+                    'tools' => ['Read', 'Edit', 'Write', 'Bash', 'Glob', 'Grep'],
                     'disallowed_tools' => [],
                     'isolation' => true,
                 ],
@@ -225,8 +225,8 @@ class SparkyNanoSeeder extends Seeder
                     ],
                 ],
                 'agent_config' => [
-                    'tools' => ['read', 'glob', 'grep', 'bash'],
-                    'disallowed_tools' => ['edit', 'write'],
+                    'tools' => ['Read', 'Glob', 'Grep', 'Bash'],
+                    'disallowed_tools' => [],
                     'isolation' => false,
                 ],
                 'output_config' => [
@@ -263,8 +263,8 @@ class SparkyNanoSeeder extends Seeder
                     ],
                 ],
                 'agent_config' => [
-                    'tools' => ['read', 'glob', 'grep', 'bash'],
-                    'disallowed_tools' => ['edit', 'write'],
+                    'tools' => ['Read', 'Glob', 'Grep', 'Bash'],
+                    'disallowed_tools' => [],
                     'isolation' => false,
                 ],
                 'output_config' => [

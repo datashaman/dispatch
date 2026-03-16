@@ -27,17 +27,16 @@ class ToolRegistry
     ];
 
     /**
-     * Resolve tool names to Tool instances, filtering by allowed/disallowed lists.
+     * Resolve tool names to Tool instances.
      *
-     * @param  list<string>  $allowedTools
-     * @param  list<string>  $disallowedTools
+     * If $tools is empty, all available tools are resolved.
+     *
+     * @param  list<string>  $tools  Explicit list of tools to resolve (empty = all)
      * @return list<Tool>
      */
-    public function resolve(array $allowedTools, array $disallowedTools, string $workingDirectory): array
+    public function resolve(array $tools, string $workingDirectory): array
     {
-        $toolNames = ! empty($allowedTools) ? $allowedTools : array_keys(static::$tools);
-
-        $toolNames = array_diff($toolNames, $disallowedTools);
+        $toolNames = ! empty($tools) ? $tools : array_keys(static::$tools);
 
         $resolved = [];
         foreach ($toolNames as $name) {

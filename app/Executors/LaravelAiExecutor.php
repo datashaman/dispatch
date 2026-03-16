@@ -95,8 +95,7 @@ class LaravelAiExecutor implements Executor
         $workingDirectory = $agentConfig['project_path'] ?? '';
 
         return $this->toolRegistry->resolve(
-            allowedTools: $agentConfig['tools'] ?? [],
-            disallowedTools: $agentConfig['disallowed_tools'] ?? [],
+            tools: $agentConfig['tools'] ?? [],
             workingDirectory: $workingDirectory,
         );
     }

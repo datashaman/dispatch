@@ -243,9 +243,9 @@ test('GrepTool returns message for no matches', function () {
 
 // --- ToolRegistry ---
 
-test('ToolRegistry resolves all tools when no allowed list specified', function () {
+test('ToolRegistry resolves all tools when no list specified', function () {
     $registry = new ToolRegistry;
-    $tools = $registry->resolve([], [], $this->workDir);
+    $tools = $registry->resolve([], $this->workDir);
 
     expect($tools)->toHaveCount(6)
         ->and($tools[0])->toBeInstanceOf(ReadTool::class)
@@ -258,39 +258,16 @@ test('ToolRegistry resolves all tools when no allowed list specified', function 
 
 test('ToolRegistry resolves only specified tools', function () {
     $registry = new ToolRegistry;
-    $tools = $registry->resolve(['Read', 'Bash'], [], $this->workDir);
+    $tools = $registry->resolve(['Read', 'Bash'], $this->workDir);
 
     expect($tools)->toHaveCount(2)
         ->and($tools[0])->toBeInstanceOf(ReadTool::class)
         ->and($tools[1])->toBeInstanceOf(BashTool::class);
 });
 
-test('ToolRegistry filters out disallowed tools', function () {
-    $registry = new ToolRegistry;
-    $tools = $registry->resolve([], ['Bash', 'Write'], $this->workDir);
-
-    expect($tools)->toHaveCount(4);
-
-    $classes = array_map(fn ($t) => $t::class, $tools);
-    expect($classes)->not->toContain(BashTool::class)
-        ->and($classes)->not->toContain(WriteTool::class);
-});
-
-test('ToolRegistry disallowed takes precedence over allowed', function () {
-    $registry = new ToolRegistry;
-    $tools = $registry->resolve(['Read', 'Bash', 'Write'], ['Bash'], $this->workDir);
-
-    expect($tools)->toHaveCount(2);
-
-    $classes = array_map(fn ($t) => $t::class, $tools);
-    expect($classes)->toContain(ReadTool::class)
-        ->and($classes)->toContain(WriteTool::class)
-        ->and($classes)->not->toContain(BashTool::class);
-});
-
 test('ToolRegistry ignores unknown tool names', function () {
     $registry = new ToolRegistry;
-    $tools = $registry->resolve(['Read', 'UnknownTool'], [], $this->workDir);
+    $tools = $registry->resolve(['Read', 'UnknownTool'], $this->workDir);
 
     expect($tools)->toHaveCount(1)
         ->and($tools[0])->toBeInstanceOf(ReadTool::class);
@@ -304,7 +281,7 @@ test('ToolRegistry returns available tool names', function () {
 
 test('all tools implement Tool interface', function () {
     $registry = new ToolRegistry;
-    $tools = $registry->resolve([], [], $this->workDir);
+    $tools = $registry->resolve([], $this->workDir);
 
     foreach ($tools as $tool) {
         expect($tool)->toBeInstanceOf(Tool::class);
@@ -313,7 +290,7 @@ test('all tools implement Tool interface', function () {
 
 test('all tools scope to working directory', function () {
     $registry = new ToolRegistry;
-    $tools = $registry->resolve([], [], $this->workDir);
+    $tools = $registry->resolve([], $this->workDir);
 
     foreach ($tools as $tool) {
         $reflection = new ReflectionProperty($tool, 'workingDirectory');

@@ -670,15 +670,17 @@ new #[Title('Rules & Filters')] class extends Component {
 
                     <flux:field>
                         <flux:label>{{ __('Tools') }}</flux:label>
-                        <flux:input wire:model="agentTools" placeholder="Read, Edit, Write, Bash" />
-                        <flux:text variant="subtle" class="text-xs">{{ __('Comma-separated list of allowed tools.') }}</flux:text>
+                        <flux:input wire:model="agentTools" placeholder="e.g. Read, Glob, Grep, Bash" />
+                        <flux:text variant="subtle" class="text-xs">{{ __('Tools the agent can use. Leave empty for all tools. Available: Read, Edit, Write, Bash, Glob, Grep.') }}</flux:text>
                     </flux:field>
 
-                    <flux:field>
-                        <flux:label>{{ __('Disallowed Tools') }}</flux:label>
-                        <flux:input wire:model="agentDisallowedTools" placeholder="Bash" />
-                        <flux:text variant="subtle" class="text-xs">{{ __('Comma-separated list of disallowed tools.') }}</flux:text>
-                    </flux:field>
+                    @if ($this->getProject()?->agent_executor === 'claude-cli')
+                        <flux:field>
+                            <flux:label>{{ __('Disallowed Tools') }}</flux:label>
+                            <flux:input wire:model="agentDisallowedTools" placeholder="e.g. Edit, Write" />
+                            <flux:text variant="subtle" class="text-xs">{{ __('Claude CLI only. Block these tools entirely, even if listed above.') }}</flux:text>
+                        </flux:field>
+                    @endif
 
                     <flux:field>
                         <flux:switch wire:model="agentIsolation" label="{{ __('Isolation (git worktree)') }}" />
