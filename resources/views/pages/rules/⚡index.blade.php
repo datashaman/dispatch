@@ -1,5 +1,6 @@
 <?php
 
+use App\DataTransferObjects\RuleConfig;
 use App\Models\Project;
 use App\Services\ConfigLoader;
 use Livewire\Attributes\Computed;
@@ -9,6 +10,7 @@ use Livewire\Component;
 new #[Title('Rules')] class extends Component {
     public int $projectId;
     public string $errorMessage = '';
+    public ?string $expandedRuleId = null;
 
     public function mount(Project $project): void
     {
@@ -36,6 +38,44 @@ new #[Title('Rules')] class extends Component {
     public function getEvents(): array
     {
         return config('dispatch.events', []);
+    }
+
+    public function toggleExpand(string $ruleId): void
+    {
+        $this->expandedRuleId = $this->expandedRuleId === $ruleId ? null : $ruleId;
+    }
+
+    public function getRuleSummary(RuleConfig $rule): string
+    {
+        $parts = [];
+
+        $events = config('dispatch.events', []);
+        $eventLabel = $events[$rule->event]['label'] ?? $rule->event;
+        $parts[] = 'When ' . $eventLabel;
+
+        $filterParts = [];
+        foreach ($rule->filters as $filter) {
+            $field = str_replace('event.', '', $filter->field);
+            $field = str_replace('.', ' ', $field);
+            $op = match ($filter->operator->value) {
+                'equals' => 'is',
+                'not_equals' => 'is not',
+                'contains' => 'contains',
+                'not_contains' => 'does not contain',
+                'starts_with' => 'starts with',
+                'ends_with' => 'ends with',
+                'matches' => 'matches',
+            };
+            $filterParts[] = "{$field} {$op} \"{$filter->value}\"";
+        }
+        if ($filterParts) {
+            $parts[] = 'and ' . implode(' and ', $filterParts);
+        }
+
+        $name = $rule->name ?: $rule->id;
+        $parts[] = "→ {$name}";
+
+        return implode(' ', $parts);
     }
 }; ?>
 
@@ -92,61 +132,61 @@ new #[Title('Rules')] class extends Component {
         @if (empty($this->config->rules))
             <flux:text class="text-zinc-500">{{ __('No rules defined in dispatch.yml.') }}</flux:text>
         @else
-            <div class="space-y-4">
+            <div class="space-y-2">
                 @foreach ($this->config->rules as $rule)
-                    <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 p-4">
-                        <div class="flex items-start justify-between mb-3">
-                            <div>
-                                <flux:heading size="sm">{{ $rule->name ?? $rule->id }}</flux:heading>
-                                <div class="flex items-center gap-2 mt-1">
-                                    <flux:badge size="sm" color="blue">{{ $rule->id }}</flux:badge>
-                                    <flux:badge size="sm" color="zinc">{{ $this->getEvents()[$rule->event]['label'] ?? $rule->event }}</flux:badge>
-                                    @if ($rule->agent?->isolation)
-                                        <flux:badge size="sm" color="amber">{{ __('Worktree') }}</flux:badge>
-                                    @endif
-                                </div>
+                    <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden" wire:key="rule-{{ $rule->id }}">
+                        {{-- Summary Row --}}
+                        <div class="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50" wire:click="toggleExpand('{{ $rule->id }}')">
+                            <flux:icon name="{{ $expandedRuleId === $rule->id ? 'chevron-down' : 'chevron-right' }}" class="h-4 w-4 shrink-0 text-zinc-400" />
+                            <div class="min-w-0 flex-1">
+                                <span class="text-sm">{{ $this->getRuleSummary($rule) }}</span>
                             </div>
-                            <div class="flex items-center gap-1">
-                                @if ($rule->output?->githubComment)
-                                    <flux:badge size="sm" color="green">{{ __('Comment') }}</flux:badge>
+                            <div class="flex items-center gap-2 shrink-0">
+                                @if ($rule->continueOnError)
+                                    <flux:badge size="sm" color="amber">{{ __('Continue on error') }}</flux:badge>
                                 @endif
-                                @if ($rule->output?->githubReaction)
-                                    <flux:badge size="sm" color="zinc">{{ $rule->output->githubReaction }}</flux:badge>
+                                @if ($rule->agent?->isolation)
+                                    <flux:badge size="sm" color="sky">{{ __('Worktree') }}</flux:badge>
                                 @endif
+                                <flux:badge size="sm">{{ $rule->id }}</flux:badge>
                             </div>
                         </div>
 
-                        {{-- Filters --}}
-                        @if (! empty($rule->filters))
-                            <div class="mb-3">
-                                <flux:text variant="subtle" class="text-xs uppercase mb-1">{{ __('Filters') }}</flux:text>
-                                <div class="flex flex-wrap gap-1">
-                                    @foreach ($rule->filters as $filter)
-                                        <flux:badge size="sm" color="zinc" class="font-mono">
-                                            {{ $filter->field }} {{ $filter->operator->value }} "{{ $filter->value }}"
-                                        </flux:badge>
-                                    @endforeach
+                        {{-- Expanded Detail --}}
+                        @if ($expandedRuleId === $rule->id)
+                            <div class="border-t border-zinc-200 dark:border-zinc-700">
+                                {{-- Tools Bar --}}
+                                <div class="flex items-center justify-between bg-zinc-50 dark:bg-zinc-800/50 px-4 py-2">
+                                    <div class="flex items-center gap-2">
+                                        @if ($rule->agent?->tools)
+                                            @foreach ($rule->agent->tools as $tool)
+                                                <flux:badge size="sm">{{ $tool }}</flux:badge>
+                                            @endforeach
+                                        @endif
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        @if ($rule->output?->githubComment)
+                                            <flux:badge size="sm" color="green">{{ __('Comment') }}</flux:badge>
+                                        @endif
+                                        @if ($rule->output?->githubReaction)
+                                            <flux:badge size="sm" color="zinc">{{ $rule->output->githubReaction }}</flux:badge>
+                                        @endif
+                                        @if ($rule->retry?->enabled)
+                                            <flux:badge size="sm" color="purple">{{ __('Retry') }} &times;{{ $rule->retry->maxAttempts }}</flux:badge>
+                                        @endif
+                                    </div>
                                 </div>
+
+                                {{-- Prompt Preview --}}
+                                @if ($rule->prompt)
+                                    <div class="border-t border-zinc-200 dark:border-zinc-700 px-4 py-3">
+                                        <pre class="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 p-3 text-xs font-mono text-amber-900 dark:text-amber-200 whitespace-pre-wrap max-h-48 overflow-y-auto">{{ $rule->prompt }}</pre>
+                                    </div>
+                                @endif
+
+                                {{-- Filters already shown in summary line --}}
                             </div>
                         @endif
-
-                        {{-- Tools --}}
-                        @if ($rule->agent?->tools)
-                            <div class="mb-3">
-                                <flux:text variant="subtle" class="text-xs uppercase mb-1">{{ __('Tools') }}</flux:text>
-                                <div class="flex flex-wrap gap-1">
-                                    @foreach ($rule->agent->tools as $tool)
-                                        <flux:badge size="sm" color="zinc">{{ $tool }}</flux:badge>
-                                    @endforeach
-                                </div>
-                            </div>
-                        @endif
-
-                        {{-- Prompt Preview --}}
-                        <div>
-                            <flux:text variant="subtle" class="text-xs uppercase mb-1">{{ __('Prompt') }}</flux:text>
-                            <pre class="rounded-lg bg-zinc-50 dark:bg-zinc-800 p-3 text-xs font-mono whitespace-pre-wrap max-h-32 overflow-y-auto">{{ $rule->prompt }}</pre>
-                        </div>
                     </div>
                 @endforeach
             </div>
