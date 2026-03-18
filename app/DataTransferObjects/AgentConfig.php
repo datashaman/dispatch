@@ -16,5 +16,6 @@ readonly class AgentConfig
         public ?array $tools = null,
         public ?array $disallowedTools = null,
         public bool $isolation = false,
+        public ?int $timeout = null,
     ) {}
 }

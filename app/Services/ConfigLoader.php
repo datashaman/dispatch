@@ -206,6 +206,7 @@ class ConfigLoader
             tools: $data['tools'] ?? null,
             disallowedTools: $data['disallowed_tools'] ?? null,
             isolation: (bool) ($data['isolation'] ?? false),
+            timeout: isset($data['timeout']) ? (int) $data['timeout'] : null,
         );
     }
 

@@ -54,8 +54,10 @@ class LaravelAiExecutor implements Executor
                 $agent->withConversationHistory($conversationHistory);
             }
 
-            Log::info('LaravelAiExecutor: calling Anthropic API', [
+            Log::info('LaravelAiExecutor: calling API', [
                 'agent_run_id' => $run->id,
+                'system_prompt' => substr($systemPrompt, 0, 2000),
+                'rendered_prompt' => $renderedPrompt,
             ]);
 
             $response = $agent->prompt(
@@ -70,6 +72,7 @@ class LaravelAiExecutor implements Executor
                 'completion_tokens' => $response->usage->completionTokens ?? null,
                 'steps_count' => $response->steps->count(),
                 'output_length' => strlen($response->text ?? ''),
+                'output' => substr($response->text ?? '', 0, 2000),
             ]);
 
             $durationMs = (int) ((hrtime(true) - $startTime) / 1_000_000);

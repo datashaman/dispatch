@@ -26,6 +26,8 @@ class ProcessAgentRun implements ShouldQueue
 
     public int $backoff = 0;
 
+    public int $timeout = 900;
+
     /**
      * @param  array<string, mixed>  $payload
      */
@@ -38,6 +40,7 @@ class ProcessAgentRun implements ShouldQueue
     ) {
         $this->onQueue('agents');
         $this->configureRetry();
+        $this->configureTimeout();
     }
 
     /**
@@ -126,6 +129,19 @@ class ProcessAgentRun implements ShouldQueue
         if ($retryConfig && $retryConfig->enabled) {
             $this->tries = $retryConfig->maxAttempts;
             $this->backoff = $retryConfig->delay;
+        }
+    }
+
+    /**
+     * Configure job timeout from the rule's agent config.
+     * Defaults to 900s (15 minutes) if not specified.
+     */
+    protected function configureTimeout(): void
+    {
+        $agentTimeout = $this->ruleConfig->agent?->timeout;
+
+        if ($agentTimeout !== null) {
+            $this->timeout = $agentTimeout;
         }
     }
 
