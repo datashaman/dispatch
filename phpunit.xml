@@ -33,5 +33,6 @@
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
         <env name="LOG_CHANNEL" value="stderr"/>
+        <env name="REPOMAPPER_PATH" value=""/>
     </php>
 </phpunit>

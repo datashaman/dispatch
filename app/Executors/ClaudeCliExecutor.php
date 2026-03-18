@@ -6,6 +6,7 @@ use App\Contracts\Executor;
 use App\DataTransferObjects\ExecutionResult;
 use App\Models\AgentRun;
 use App\Services\ConversationMemory;
+use App\Services\StructuralMapper;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
@@ -13,6 +14,10 @@ use Throwable;
 
 class ClaudeCliExecutor implements Executor
 {
+    public function __construct(
+        protected StructuralMapper $structuralMapper,
+    ) {}
+
     public function execute(AgentRun $run, string $renderedPrompt, array $agentConfig, array $conversationHistory = []): ExecutionResult
     {
         $startTime = hrtime(true);
@@ -114,6 +119,10 @@ class ClaudeCliExecutor implements Executor
         $command = ['claude', '--print', '--output-format', 'text'];
 
         $systemPrompt = $this->loadSystemPrompt($agentConfig);
+        $structuralMap = $this->buildStructuralMap($agentConfig);
+        if ($structuralMap !== '') {
+            $systemPrompt = ($systemPrompt ?? '').$structuralMap;
+        }
         if ($systemPrompt !== null) {
             $command[] = '--system-prompt';
             $command[] = $systemPrompt;
@@ -193,6 +202,28 @@ class ClaudeCliExecutor implements Executor
         }
 
         return null;
+    }
+
+    /**
+     * Build a structural map of the project to include in the system prompt.
+     *
+     * @param  array<string, mixed>  $agentConfig
+     */
+    protected function buildStructuralMap(array $agentConfig): string
+    {
+        $projectPath = $agentConfig['project_path'] ?? null;
+
+        if (! $projectPath) {
+            return '';
+        }
+
+        $map = $this->structuralMapper->generate($projectPath);
+
+        if ($map === null) {
+            return '';
+        }
+
+        return "\n\n## Codebase Structure\n\nThis is a structural map of the project — classes, methods, and signatures ranked by importance:\n\n```\n{$map}\n```";
     }
 
     /**

@@ -13,7 +13,7 @@ use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\Process;
 
 test('ClaudeCliExecutor implements Executor interface', function () {
-    $executor = new ClaudeCliExecutor;
+    $executor = app(ClaudeCliExecutor::class);
 
     expect($executor)->toBeInstanceOf(Executor::class);
 });
@@ -41,7 +41,7 @@ test('ClaudeCliExecutor executes claude CLI and returns success result', functio
         'created_at' => now(),
     ]);
 
-    $executor = new ClaudeCliExecutor;
+    $executor = app(ClaudeCliExecutor::class);
     $result = $executor->execute($agentRun, 'Analyze this code', [
         'project_path' => '/tmp/test-project',
     ]);
@@ -86,7 +86,7 @@ test('ClaudeCliExecutor returns failure result on non-zero exit code', function 
         'created_at' => now(),
     ]);
 
-    $executor = new ClaudeCliExecutor;
+    $executor = app(ClaudeCliExecutor::class);
     $result = $executor->execute($agentRun, 'Do something', [
         'project_path' => '/tmp/test-project',
     ]);
@@ -120,7 +120,7 @@ test('ClaudeCliExecutor returns failure result on exception', function () {
         'created_at' => now(),
     ]);
 
-    $executor = new ClaudeCliExecutor;
+    $executor = app(ClaudeCliExecutor::class);
     $result = $executor->execute($agentRun, 'Hello', [
         'project_path' => '/tmp/test-project',
     ]);
@@ -149,7 +149,7 @@ test('ClaudeCliExecutor passes allowed tools as CLI flags', function () {
         'created_at' => now(),
     ]);
 
-    $executor = new ClaudeCliExecutor;
+    $executor = app(ClaudeCliExecutor::class);
     $executor->execute($agentRun, 'Review code', [
         'project_path' => '/tmp/test-project',
         'tools' => ['Read', 'Glob', 'Grep'],
@@ -193,7 +193,7 @@ test('ClaudeCliExecutor passes disallowed tools as CLI flags', function () {
         'created_at' => now(),
     ]);
 
-    $executor = new ClaudeCliExecutor;
+    $executor = app(ClaudeCliExecutor::class);
     $executor->execute($agentRun, 'Review code', [
         'project_path' => '/tmp/test-project',
         'disallowed_tools' => ['Bash', 'Write'],
@@ -236,7 +236,7 @@ test('ClaudeCliExecutor passes model flag', function () {
         'created_at' => now(),
     ]);
 
-    $executor = new ClaudeCliExecutor;
+    $executor = app(ClaudeCliExecutor::class);
     $executor->execute($agentRun, 'Hello', [
         'project_path' => '/tmp/test-project',
         'model' => 'claude-sonnet-4-20250514',
@@ -278,7 +278,7 @@ test('ClaudeCliExecutor loads system prompt from instructions file', function ()
         'created_at' => now(),
     ]);
 
-    $executor = new ClaudeCliExecutor;
+    $executor = app(ClaudeCliExecutor::class);
     $result = $executor->execute($agentRun, 'Review this PR', [
         'project_path' => $tempDir,
         'instructions_file' => 'INSTRUCTIONS.md',
@@ -323,7 +323,7 @@ test('ClaudeCliExecutor omits system prompt when instructions file is missing', 
         'created_at' => now(),
     ]);
 
-    $executor = new ClaudeCliExecutor;
+    $executor = app(ClaudeCliExecutor::class);
     $result = $executor->execute($agentRun, 'Do something', [
         'project_path' => '/nonexistent/path',
         'instructions_file' => 'nonexistent.md',
@@ -358,7 +358,7 @@ test('ClaudeCliExecutor sets working directory to project path', function () {
         'created_at' => now(),
     ]);
 
-    $executor = new ClaudeCliExecutor;
+    $executor = app(ClaudeCliExecutor::class);
     $executor->execute($agentRun, 'Hello', [
         'project_path' => '/my/project/path',
     ]);
@@ -445,7 +445,7 @@ test('ClaudeCliExecutor uses output format text flag', function () {
         'created_at' => now(),
     ]);
 
-    $executor = new ClaudeCliExecutor;
+    $executor = app(ClaudeCliExecutor::class);
     $executor->execute($agentRun, 'Hello', [
         'project_path' => '/tmp/test-project',
     ]);

@@ -355,7 +355,7 @@ test('ClaudeCliExecutor prepends conversation history to prompt', function () {
         ['role' => 'assistant', 'content' => 'Prior answer'],
     ];
 
-    $executor = new ClaudeCliExecutor;
+    $executor = app(ClaudeCliExecutor::class);
     $result = $executor->execute($agentRun, 'New question', [
         'project_path' => '/tmp/test-project',
     ], $conversationHistory);
@@ -400,7 +400,7 @@ test('ClaudeCliExecutor sends plain prompt without history', function () {
         'created_at' => now(),
     ]);
 
-    $executor = new ClaudeCliExecutor;
+    $executor = app(ClaudeCliExecutor::class);
     $result = $executor->execute($agentRun, 'Simple prompt', [
         'project_path' => '/tmp/test-project',
     ]);

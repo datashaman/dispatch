@@ -6,6 +6,7 @@ use App\Ai\Agents\DispatchAgent;
 use App\Contracts\Executor;
 use App\DataTransferObjects\ExecutionResult;
 use App\Models\AgentRun;
+use App\Services\StructuralMapper;
 use App\Services\ToolRegistry;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
@@ -16,6 +17,7 @@ class LaravelAiExecutor implements Executor
 {
     public function __construct(
         protected ToolRegistry $toolRegistry,
+        protected StructuralMapper $structuralMapper,
     ) {}
 
     public function execute(AgentRun $run, string $renderedPrompt, array $agentConfig, array $conversationHistory = []): ExecutionResult
@@ -23,7 +25,9 @@ class LaravelAiExecutor implements Executor
         $startTime = hrtime(true);
 
         try {
-            $systemPrompt = $this->loadSystemPrompt($agentConfig).$this->buildOutputInstructions($agentConfig);
+            $systemPrompt = $this->loadSystemPrompt($agentConfig)
+                .$this->buildStructuralMap($agentConfig)
+                .$this->buildOutputInstructions($agentConfig);
             $tools = $this->resolveTools($agentConfig);
 
             $provider = $agentConfig['provider'] ?? null;
@@ -117,6 +121,28 @@ class LaravelAiExecutor implements Executor
         }
 
         return 'You are a helpful AI assistant.';
+    }
+
+    /**
+     * Build a structural map of the project to include in the system prompt.
+     *
+     * @param  array<string, mixed>  $agentConfig
+     */
+    protected function buildStructuralMap(array $agentConfig): string
+    {
+        $projectPath = $agentConfig['project_path'] ?? null;
+
+        if (! $projectPath) {
+            return '';
+        }
+
+        $map = $this->structuralMapper->generate($projectPath);
+
+        if ($map === null) {
+            return '';
+        }
+
+        return "\n\n## Codebase Structure\n\nThis is a structural map of the project — classes, methods, and signatures ranked by importance:\n\n```\n{$map}\n```";
     }
 
     /**

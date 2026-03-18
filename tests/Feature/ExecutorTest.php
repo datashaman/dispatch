@@ -11,6 +11,7 @@ use App\Jobs\ProcessAgentRun;
 use App\Models\AgentRun;
 use App\Models\Project;
 use App\Models\WebhookLog;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Laravel\Ai\Contracts\Agent;
 use Laravel\Ai\Contracts\HasTools;
@@ -148,8 +149,7 @@ test('LaravelAiExecutor loads system prompt from instructions file', function ()
     DispatchAgent::assertPrompted('Review this PR');
 
     // Cleanup
-    unlink($tempDir.'/INSTRUCTIONS.md');
-    rmdir($tempDir);
+    File::deleteDirectory($tempDir);
 });
 
 test('LaravelAiExecutor uses default prompt when instructions file is missing', function () {
