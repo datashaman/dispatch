@@ -64,3 +64,9 @@ select:focus[data-flux-control] {
 /* \[:where(&)\]:size-4 {
     @apply size-4;
 } */
+
+button,
+[role="button"],
+a[data-flux-button] {
+    cursor: pointer;
+}

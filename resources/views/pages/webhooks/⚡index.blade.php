@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\WebhookLog;
+use Illuminate\Support\Facades\Http;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
@@ -8,6 +9,7 @@ new #[Title('Webhook Logs')] class extends Component {
     public string $filterRepo = '';
     public string $filterEventType = '';
     public string $filterStatus = '';
+    public string $replayMessage = '';
 
     public function getLogs()
     {
@@ -56,6 +58,56 @@ new #[Title('Webhook Logs')] class extends Component {
     {
         WebhookLog::query()->delete();
         $this->confirmingClear = false;
+    }
+
+    public function replay(int $id): void
+    {
+        $log = WebhookLog::find($id);
+        if (! $log) {
+            return;
+        }
+
+        $this->replayMessage = '';
+
+        $payload = $log->payload ?? [];
+        $eventType = $log->event_type ?? '';
+        $baseEvent = str_contains($eventType, '.') ? substr($eventType, 0, strpos($eventType, '.')) : $eventType;
+
+        $secret = config('services.github.webhook_secret');
+        $body = json_encode($payload);
+        $signature = $secret ? 'sha256=' . hash_hmac('sha256', $body, $secret) : null;
+
+        $headers = [
+            'X-GitHub-Event' => $baseEvent,
+            'Content-Type' => 'application/json',
+        ];
+
+        if ($signature) {
+            $headers['X-Hub-Signature-256'] = $signature;
+        }
+
+        try {
+            $response = Http::withoutVerifying()->withHeaders($headers)
+                ->withBody($body, 'application/json')
+                ->post(url('/api/webhook'));
+
+            $data = $response->json();
+
+            if ($response->successful() && ($data['ok'] ?? false)) {
+                $matched = $data['matched'] ?? 0;
+                $newLogId = $data['webhook_log_id'] ?? null;
+
+                if ($newLogId) {
+                    $this->redirect(route('webhooks.show', $newLogId), navigate: true);
+                } else {
+                    $this->replayMessage = "Replayed — {$matched} rule(s) matched.";
+                }
+            } else {
+                $this->replayMessage = 'Replay failed: ' . ($data['error'] ?? $response->body());
+            }
+        } catch (\Throwable $e) {
+            $this->replayMessage = "Replay error: {$e->getMessage()}";
+        }
     }
 }; ?>
 
@@ -117,6 +169,12 @@ new #[Title('Webhook Logs')] class extends Component {
         @endif
     </div>
 
+    @if ($replayMessage)
+        <flux:callout variant="{{ str_starts_with($replayMessage, 'Replayed') ? 'success' : 'danger' }}" class="mb-6">
+            {{ $replayMessage }}
+        </flux:callout>
+    @endif
+
     {{-- Logs List --}}
     @php $logs = $this->getLogs(); @endphp
 
@@ -165,9 +223,12 @@ new #[Title('Webhook Logs')] class extends Component {
                                 {{ $log->created_at?->format('M j, H:i:s') }}
                             </td>
                             <td class="px-4 py-3 text-right">
-                                <flux:button variant="ghost" size="sm" icon="eye" :href="route('webhooks.show', $log)" wire:navigate>
-                                    {{ __('View') }}
-                                </flux:button>
+                                <div class="flex items-center justify-end gap-1">
+                                    <flux:button variant="ghost" size="sm" icon="arrow-path" wire:click="replay({{ $log->id }})" title="{{ __('Replay') }}" />
+                                    <flux:button variant="ghost" size="sm" icon="eye" :href="route('webhooks.show', $log)" wire:navigate>
+                                        {{ __('View') }}
+                                    </flux:button>
+                                </div>
                             </td>
                         </tr>
                     @endforeach
