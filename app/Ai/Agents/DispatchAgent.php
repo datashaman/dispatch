@@ -32,6 +32,11 @@ class DispatchAgent implements Agent, Conversational, HasTools
         return $this->systemPrompt;
     }
 
+    public function timeout(): int
+    {
+        return 300;
+    }
+
     public function tools(): iterable
     {
         return $this->agentTools;

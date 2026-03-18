@@ -2,6 +2,7 @@
 
 use App\Models\AgentRun;
 use App\Models\WebhookLog;
+use Illuminate\Support\Facades\Http;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
@@ -9,6 +10,8 @@ new #[Title('Webhook Log Detail')] class extends Component {
     public ?int $webhookLogId = null;
     public ?int $viewingAgentRunId = null;
     public bool $showAgentRunDetail = false;
+    public bool $replaying = false;
+    public string $replayMessage = '';
 
     public function mount(int $webhookLog): void
     {
@@ -44,6 +47,59 @@ new #[Title('Webhook Log Detail')] class extends Component {
 
         return $log->agentRuns->whereIn('status', ['queued', 'running'])->isNotEmpty();
     }
+
+    public function replay(): void
+    {
+        $log = $this->getWebhookLog();
+        if (! $log) {
+            return;
+        }
+
+        $this->replaying = true;
+        $this->replayMessage = '';
+
+        try {
+            $payload = $log->payload ?? [];
+            $eventType = $log->event_type ?? '';
+            $baseEvent = str_contains($eventType, '.') ? substr($eventType, 0, strpos($eventType, '.')) : $eventType;
+
+            $secret = config('services.github.webhook_secret');
+            $body = json_encode($payload);
+            $signature = $secret ? 'sha256=' . hash_hmac('sha256', $body, $secret) : null;
+
+            $headers = [
+                'X-GitHub-Event' => $baseEvent,
+                'Content-Type' => 'application/json',
+            ];
+
+            if ($signature) {
+                $headers['X-Hub-Signature-256'] = $signature;
+            }
+
+            $response = Http::withoutVerifying()->withHeaders($headers)
+                ->withBody($body, 'application/json')
+                ->post(url('/api/webhook'));
+
+            $data = $response->json();
+
+            if ($response->successful() && ($data['ok'] ?? false)) {
+                $matched = $data['matched'] ?? 0;
+                $newLogId = $data['webhook_log_id'] ?? null;
+                $this->replayMessage = "Replayed successfully — {$matched} rule(s) matched.";
+
+                if ($newLogId) {
+                    $this->redirect(route('webhooks.show', $newLogId), navigate: true);
+                }
+            } else {
+                $error = $data['error'] ?? $response->body();
+                $this->replayMessage = "Replay failed: {$error}";
+            }
+        } catch (\Throwable $e) {
+            $this->replayMessage = "Replay error: {$e->getMessage()}";
+        } finally {
+            $this->replaying = false;
+        }
+    }
 }; ?>
 
 <section class="w-full" @if ($this->hasInProgressRuns()) wire:poll.5s @endif>
@@ -59,10 +115,22 @@ new #[Title('Webhook Log Detail')] class extends Component {
                 <flux:heading size="xl">{{ __('Webhook Log') }} #{{ $log->id }}</flux:heading>
                 <flux:text class="mt-1">{{ $log->event_type }} &mdash; {{ $log->repo ?? __('No repo') }}</flux:text>
             </div>
-            <flux:button variant="ghost" icon="arrow-left" :href="route('webhooks.index')" wire:navigate>
-                {{ __('Back to Logs') }}
-            </flux:button>
+            <div class="flex items-center gap-2">
+                <flux:button variant="ghost" icon="arrow-path" wire:click="replay" wire:loading.attr="disabled" wire:target="replay">
+                    <span wire:loading.remove wire:target="replay">{{ __('Replay') }}</span>
+                    <span wire:loading wire:target="replay">{{ __('Replaying...') }}</span>
+                </flux:button>
+                <flux:button variant="ghost" icon="arrow-left" :href="route('webhooks.index')" wire:navigate>
+                    {{ __('Back to Logs') }}
+                </flux:button>
+            </div>
         </div>
+
+        @if ($replayMessage)
+            <flux:callout variant="{{ str_starts_with($replayMessage, 'Replayed successfully') ? 'success' : 'danger' }}" class="mb-6">
+                {{ $replayMessage }}
+            </flux:callout>
+        @endif
 
         {{-- Summary --}}
         <div class="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">

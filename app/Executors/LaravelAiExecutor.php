@@ -8,6 +8,7 @@ use App\DataTransferObjects\ExecutionResult;
 use App\Models\AgentRun;
 use App\Services\ToolRegistry;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
 use Laravel\Ai\Contracts\Tool;
 use Throwable;
 
@@ -25,6 +26,21 @@ class LaravelAiExecutor implements Executor
             $systemPrompt = $this->loadSystemPrompt($agentConfig).$this->buildOutputInstructions($agentConfig);
             $tools = $this->resolveTools($agentConfig);
 
+            $provider = $agentConfig['provider'] ?? null;
+            $model = $agentConfig['model'] ?? null;
+
+            Log::info('LaravelAiExecutor: starting execution', [
+                'agent_run_id' => $run->id,
+                'provider' => $provider,
+                'model' => $model,
+                'system_prompt_length' => strlen($systemPrompt),
+                'rendered_prompt_length' => strlen($renderedPrompt),
+                'tools' => array_map(fn (Tool $t) => $t::class, $tools),
+                'tool_count' => count($tools),
+                'conversation_history_entries' => count($conversationHistory),
+                'project_path' => $agentConfig['project_path'] ?? null,
+            ]);
+
             $agent = new DispatchAgent(
                 systemPrompt: $systemPrompt,
                 agentTools: $tools,
@@ -34,14 +50,23 @@ class LaravelAiExecutor implements Executor
                 $agent->withConversationHistory($conversationHistory);
             }
 
-            $provider = $agentConfig['provider'] ?? null;
-            $model = $agentConfig['model'] ?? null;
+            Log::info('LaravelAiExecutor: calling Anthropic API', [
+                'agent_run_id' => $run->id,
+            ]);
 
             $response = $agent->prompt(
                 prompt: $renderedPrompt,
                 provider: $provider,
                 model: $model,
             );
+
+            Log::info('LaravelAiExecutor: API response received', [
+                'agent_run_id' => $run->id,
+                'prompt_tokens' => $response->usage->promptTokens ?? null,
+                'completion_tokens' => $response->usage->completionTokens ?? null,
+                'steps_count' => $response->steps->count(),
+                'output_length' => strlen($response->text ?? ''),
+            ]);
 
             $durationMs = (int) ((hrtime(true) - $startTime) / 1_000_000);
             $tokensUsed = $response->usage->promptTokens + $response->usage->completionTokens;
@@ -57,6 +82,13 @@ class LaravelAiExecutor implements Executor
             );
         } catch (Throwable $e) {
             $durationMs = (int) ((hrtime(true) - $startTime) / 1_000_000);
+
+            Log::error('LaravelAiExecutor: execution failed', [
+                'agent_run_id' => $run->id,
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+                'duration_ms' => $durationMs,
+            ]);
 
             return new ExecutionResult(
                 status: 'failed',
