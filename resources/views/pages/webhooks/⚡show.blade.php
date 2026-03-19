@@ -405,6 +405,18 @@ new #[Title('Webhook Log Detail')] class extends Component {
                     </div>
                 @endif
 
+                @if ($agentRun->diff)
+                    <div class="mt-4">
+                        <flux:text variant="subtle" class="text-xs uppercase mb-2">{{ __('Diff') }}</flux:text>
+                        <pre class="rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 p-4 text-xs font-mono whitespace-pre-wrap max-h-96 overflow-y-auto overflow-x-auto">@foreach (explode("\n", $agentRun->diff) as $line)@if (str_starts_with($line, '+') && ! str_starts_with($line, '+++'))<span class="text-green-600 dark:text-green-400">{{ $line }}</span>
+@elseif (str_starts_with($line, '-') && ! str_starts_with($line, '---'))<span class="text-red-600 dark:text-red-400">{{ $line }}</span>
+@elseif (str_starts_with($line, '@@'))<span class="text-blue-600 dark:text-blue-400">{{ $line }}</span>
+@elseif (str_starts_with($line, 'diff '))<span class="font-bold text-zinc-700 dark:text-zinc-300">{{ $line }}</span>
+@else{{ $line }}
+@endif @endforeach</pre>
+                    </div>
+                @endif
+
                 @if ($agentRun->output)
                     <div class="mt-4">
                         <flux:text variant="subtle" class="text-xs uppercase">{{ __('Final Output') }}</flux:text>
