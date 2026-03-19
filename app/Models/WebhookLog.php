@@ -17,6 +17,7 @@ class WebhookLog extends Model
     protected $fillable = [
         'event_type',
         'repo',
+        'source',
         'payload',
         'matched_rules',
         'status',

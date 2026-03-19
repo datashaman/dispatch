@@ -18,7 +18,7 @@ use Laravel\Ai\Messages\Message;
 // --- ConversationMemory::deriveThreadKey ---
 
 test('derives thread key from issue payload', function () {
-    $memory = new ConversationMemory;
+    $memory = app(ConversationMemory::class);
 
     $key = $memory->deriveThreadKey([
         'repository' => ['full_name' => 'owner/repo'],
@@ -29,7 +29,7 @@ test('derives thread key from issue payload', function () {
 });
 
 test('derives thread key from pull request payload', function () {
-    $memory = new ConversationMemory;
+    $memory = app(ConversationMemory::class);
 
     $key = $memory->deriveThreadKey([
         'repository' => ['full_name' => 'owner/repo'],
@@ -40,7 +40,7 @@ test('derives thread key from pull request payload', function () {
 });
 
 test('derives thread key from discussion payload', function () {
-    $memory = new ConversationMemory;
+    $memory = app(ConversationMemory::class);
 
     $key = $memory->deriveThreadKey([
         'repository' => ['full_name' => 'owner/repo'],
@@ -51,7 +51,7 @@ test('derives thread key from discussion payload', function () {
 });
 
 test('pull request takes precedence over issue in thread key', function () {
-    $memory = new ConversationMemory;
+    $memory = app(ConversationMemory::class);
 
     $key = $memory->deriveThreadKey([
         'repository' => ['full_name' => 'owner/repo'],
@@ -63,13 +63,13 @@ test('pull request takes precedence over issue in thread key', function () {
 });
 
 test('returns null for payload without repository', function () {
-    $memory = new ConversationMemory;
+    $memory = app(ConversationMemory::class);
 
     expect($memory->deriveThreadKey([]))->toBeNull();
 });
 
 test('returns null for payload without identifiable resource', function () {
-    $memory = new ConversationMemory;
+    $memory = app(ConversationMemory::class);
 
     $key = $memory->deriveThreadKey([
         'repository' => ['full_name' => 'owner/repo'],
@@ -121,7 +121,7 @@ test('retrieves prior conversation history for a thread', function () {
         'created_at' => now()->subMinutes(5),
     ]);
 
-    $memory = new ConversationMemory;
+    $memory = app(ConversationMemory::class);
     $history = $memory->retrieveHistory('owner/repo:issue:42');
 
     expect($history)->toHaveCount(4) // 2 user + 2 assistant messages
@@ -154,7 +154,7 @@ test('excludes current run from conversation history', function () {
         'created_at' => now(),
     ]);
 
-    $memory = new ConversationMemory;
+    $memory = app(ConversationMemory::class);
     $history = $memory->retrieveHistory('owner/repo:issue:42', $run->id);
 
     expect($history)->toBeEmpty();
@@ -180,7 +180,7 @@ test('does not include failed runs in history', function () {
         'created_at' => now(),
     ]);
 
-    $memory = new ConversationMemory;
+    $memory = app(ConversationMemory::class);
     $history = $memory->retrieveHistory('owner/repo:issue:42');
 
     expect($history)->toBeEmpty();
@@ -227,7 +227,7 @@ test('does not mix threads from different issues', function () {
         'created_at' => now(),
     ]);
 
-    $memory = new ConversationMemory;
+    $memory = app(ConversationMemory::class);
     $history = $memory->retrieveHistory('owner/repo:issue:42');
 
     expect($history)->toHaveCount(2) // 1 user + 1 assistant
@@ -235,7 +235,7 @@ test('does not mix threads from different issues', function () {
 });
 
 test('returns empty history for unknown thread', function () {
-    $memory = new ConversationMemory;
+    $memory = app(ConversationMemory::class);
     $history = $memory->retrieveHistory('owner/repo:issue:999');
 
     expect($history)->toBeEmpty();
@@ -244,7 +244,7 @@ test('returns empty history for unknown thread', function () {
 // --- ConversationMemory::formatAsText ---
 
 test('formats conversation history as text', function () {
-    $memory = new ConversationMemory;
+    $memory = app(ConversationMemory::class);
 
     $messages = [
         ['role' => 'user', 'content' => 'What is this issue about?'],
@@ -261,7 +261,7 @@ test('formats conversation history as text', function () {
 });
 
 test('returns empty string for empty history', function () {
-    $memory = new ConversationMemory;
+    $memory = app(ConversationMemory::class);
 
     expect($memory->formatAsText([]))->toBe('');
 });

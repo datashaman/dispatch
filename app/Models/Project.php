@@ -15,6 +15,7 @@ class Project extends Model
     protected $fillable = [
         'repo',
         'path',
+        'source',
         'agent_name',
         'agent_executor',
         'agent_provider',
