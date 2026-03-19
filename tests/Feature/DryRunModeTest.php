@@ -85,7 +85,7 @@ it('returns matched rules with rendered prompts in dry-run mode', function (): v
                 [
                     'rule' => 'analyze',
                     'name' => 'Analyze Issue',
-                    'prompt' => 'Analyze issue #42: Test issue',
+                    'prompt' => "Analyze issue #42: <user-content field=\"issue-title\">\nTest issue\n</user-content>",
                 ],
             ],
         ]);
@@ -163,7 +163,7 @@ it('returns multiple matched rules in dry-run mode', function (): void {
                 [
                     'rule' => 'first',
                     'name' => 'First Rule',
-                    'prompt' => 'First: Test issue',
+                    'prompt' => "First: <user-content field=\"issue-title\">\nTest issue\n</user-content>",
                 ],
                 [
                     'rule' => 'second',

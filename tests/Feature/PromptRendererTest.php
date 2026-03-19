@@ -26,7 +26,7 @@ test('renders multiple placeholders', function () {
 
     $result = $this->renderer->render($template, $payload);
 
-    expect($result)->toBe('Fix bug by octocat');
+    expect($result)->toBe("<user-content field=\"issue-title\">\nFix bug\n</user-content> by octocat");
 });
 
 test('renders nested paths', function () {
@@ -128,13 +128,13 @@ test('boolean values are converted to string', function () {
     expect($result)->toBe('Draft: 1');
 });
 
-test('null values render as empty string', function () {
+test('null values render as wrapped empty string for untrusted fields', function () {
     $template = 'Body: {{ event.issue.body }}';
     $payload = ['issue' => ['body' => null]];
 
     $result = $this->renderer->render($template, $payload);
 
-    expect($result)->toBe('Body: ');
+    expect($result)->toBe("Body: <user-content field=\"issue-body\">\n\n</user-content>");
 });
 
 test('multiline prompt template is rendered correctly', function () {
@@ -149,7 +149,8 @@ test('multiline prompt template is rendered correctly', function () {
 
     $result = $this->renderer->render($template, $payload);
 
-    expect($result)->toBe("Analyze issue #42.\nTitle: Something broke\nBody: Details here");
+    $expected = "Analyze issue #42.\nTitle: <user-content field=\"issue-title\">\nSomething broke\n</user-content>\nBody: <user-content field=\"issue-body\">\nDetails here\n</user-content>";
+    expect($result)->toBe($expected);
 });
 
 test('empty template returns empty string', function () {
