@@ -21,6 +21,9 @@
                     <flux:sidebar.item icon="inbox" :href="route('webhooks.index')" :current="request()->routeIs('webhooks.*')" wire:navigate>
                         {{ __('Webhook Logs') }}
                     </flux:sidebar.item>
+                    <flux:sidebar.item icon="currency-dollar" :href="route('cost.index')" :current="request()->routeIs('cost.*')" wire:navigate>
+                        {{ __('Cost') }}
+                    </flux:sidebar.item>
                 </flux:sidebar.group>
             </flux:sidebar.nav>
 

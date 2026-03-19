@@ -6,6 +6,7 @@ use App\Ai\Agents\DispatchAgent;
 use App\Contracts\Executor;
 use App\DataTransferObjects\ExecutionResult;
 use App\Models\AgentRun;
+use App\Services\CostCalculator;
 use App\Services\ToolRegistry;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Support\Collection;
@@ -21,6 +22,7 @@ class LaravelAiExecutor implements Executor
 {
     public function __construct(
         protected ToolRegistry $toolRegistry,
+        protected CostCalculator $costCalculator,
     ) {}
 
     public function execute(AgentRun $run, string $renderedPrompt, array $agentConfig, array $conversationHistory = []): ExecutionResult
@@ -83,7 +85,11 @@ class LaravelAiExecutor implements Executor
             ]);
 
             $durationMs = (int) ((hrtime(true) - $startTime) / 1_000_000);
-            $tokensUsed = ($usage->promptTokens ?? 0) + ($usage->completionTokens ?? 0);
+            $promptTokens = $usage->promptTokens ?? 0;
+            $completionTokens = $usage->completionTokens ?? 0;
+            $tokensUsed = $promptTokens + $completionTokens;
+
+            $cost = $this->costCalculator->calculate($promptTokens, $completionTokens, $model);
 
             // Extract tool calls and results from stream events for step history
             $steps = $this->extractStepsFromEvents($streamable->events);
@@ -93,6 +99,7 @@ class LaravelAiExecutor implements Executor
                 output: $text,
                 steps: $steps ?: null,
                 tokensUsed: $tokensUsed,
+                cost: $cost,
                 durationMs: $durationMs,
             );
         } catch (Throwable $e) {
