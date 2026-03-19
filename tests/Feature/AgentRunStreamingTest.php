@@ -2,9 +2,11 @@
 
 use App\Events\AgentRunUpdated;
 use App\Models\AgentRun;
+use App\Models\User;
 use App\Models\WebhookLog;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Support\Facades\Event;
+use Livewire\Volt\Volt;
 
 test('AgentRunUpdated broadcasts on public channel', function () {
     $webhookLog = WebhookLog::factory()->create();
@@ -105,7 +107,7 @@ test('AgentRunUpdated dispatched when agent run fails', function () {
 });
 
 test('webhook show page lists agent run IDs for streaming', function () {
-    $user = \App\Models\User::factory()->create();
+    $user = User::factory()->create();
     $this->actingAs($user);
 
     $webhookLog = WebhookLog::factory()->create();
@@ -120,7 +122,7 @@ test('webhook show page lists agent run IDs for streaming', function () {
         'status' => 'queued',
     ]);
 
-    \Livewire\Volt\Volt::test('pages::webhooks.show', ['webhookLog' => $webhookLog->id])
+    Volt::test('pages::webhooks.show', ['webhookLog' => $webhookLog->id])
         ->assertSee('rule-a')
         ->assertSee('rule-b')
         ->assertSee('running')
