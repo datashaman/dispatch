@@ -72,13 +72,21 @@ class OutputHandler
             return;
         }
 
-        $this->github->postComment(
+        $result = $this->github->postComment(
             $repo,
             $resource['type'],
             $resource['number'],
             $output,
             $installationId,
         );
+
+        if (! $result) {
+            Log::error('Failed to post GitHub comment', [
+                'agent_run_id' => $agentRun->id,
+                'repo' => $repo,
+                'resource' => "{$resource['type']}/{$resource['number']}",
+            ]);
+        }
     }
 
     /**

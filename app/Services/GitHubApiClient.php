@@ -20,10 +20,21 @@ class GitHubApiClient
      */
     public function postComment(string $repo, string $resourceType, int $number, string $body, int $installationId): bool
     {
-        $response = $this->installationRequest($installationId)
-            ->post(self::API_BASE."/repos/{$repo}/{$resourceType}/{$number}/comments", [
-                'body' => $body,
+        try {
+            $response = $this->installationRequest($installationId)
+                ->post(self::API_BASE."/repos/{$repo}/{$resourceType}/{$number}/comments", [
+                    'body' => $body,
+                ]);
+        } catch (\Throwable $e) {
+            Log::error('GitHubApiClient: exception posting comment', [
+                'repo' => $repo,
+                'resource' => "{$resourceType}/{$number}",
+                'installation_id' => $installationId,
+                'error' => $e->getMessage(),
             ]);
+
+            return false;
+        }
 
         if (! $response->successful()) {
             Log::error('GitHubApiClient: failed to post comment', [
@@ -44,10 +55,22 @@ class GitHubApiClient
      */
     public function addCommentReaction(string $repo, string $commentType, int $commentId, string $reaction, int $installationId): bool
     {
-        $response = $this->installationRequest($installationId)
-            ->post(self::API_BASE."/repos/{$repo}/{$commentType}/{$commentId}/reactions", [
-                'content' => $reaction,
+        try {
+            $response = $this->installationRequest($installationId)
+                ->post(self::API_BASE."/repos/{$repo}/{$commentType}/{$commentId}/reactions", [
+                    'content' => $reaction,
+                ]);
+        } catch (\Throwable $e) {
+            Log::error('GitHubApiClient: exception adding comment reaction', [
+                'repo' => $repo,
+                'comment_type' => $commentType,
+                'comment_id' => $commentId,
+                'installation_id' => $installationId,
+                'error' => $e->getMessage(),
             ]);
+
+            return false;
+        }
 
         if (! $response->successful()) {
             Log::error('GitHubApiClient: failed to add comment reaction', [
@@ -69,10 +92,21 @@ class GitHubApiClient
      */
     public function addIssueReaction(string $repo, string $resourceType, int $number, string $reaction, int $installationId): bool
     {
-        $response = $this->installationRequest($installationId)
-            ->post(self::API_BASE."/repos/{$repo}/{$resourceType}/{$number}/reactions", [
-                'content' => $reaction,
+        try {
+            $response = $this->installationRequest($installationId)
+                ->post(self::API_BASE."/repos/{$repo}/{$resourceType}/{$number}/reactions", [
+                    'content' => $reaction,
+                ]);
+        } catch (\Throwable $e) {
+            Log::error('GitHubApiClient: exception adding issue reaction', [
+                'repo' => $repo,
+                'resource' => "{$resourceType}/{$number}",
+                'installation_id' => $installationId,
+                'error' => $e->getMessage(),
             ]);
+
+            return false;
+        }
 
         if (! $response->successful()) {
             Log::error('GitHubApiClient: failed to add issue reaction', [

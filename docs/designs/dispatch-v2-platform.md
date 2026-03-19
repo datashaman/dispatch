@@ -309,7 +309,7 @@ Things that must NOT look generic:
 - **Template cards:** Not Bootstrap cards with icons. Each card shows the rule's narrative summary ("When issues.opened → triage and label") in the same format as the rules page. The familiar pattern signals "this is a real rule, not marketing."
 - **Budget alerts:** Not red banners. Amber background (matching the existing prompt preview tint on the rules page). Conversational tone: "repo-beta has used $18.40 of its $20 budget this month" not "WARNING: Budget threshold exceeded."
 
-## Design System Notes (no DESIGN.md exists)
+## Design System Notes (see DESIGN.md)
 
 **Existing patterns to reuse:**
 - `flux:sidebar.item` with icon + label for nav entries → Cost and Templates get sidebar items

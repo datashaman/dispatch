@@ -21,7 +21,7 @@ Dispatch is a self-hosted webhook server that receives GitHub webhook events and
 - Laravel AI SDK (`laravel/ai`) for agent execution
 - Pest 4 for testing
 - SQLite (dev), Redis (queuing)
-- GitHub CLI (`gh`) for outgoing GitHub operations
+- GitHub API via `GitHubApiClient` (HTTP with installation tokens) for outgoing GitHub operations
 
 ## Key Services
 
@@ -31,7 +31,8 @@ Dispatch is a self-hosted webhook server that receives GitHub webhook events and
 | `AgentDispatcher` | Queues agent jobs |
 | `ConfigSyncer` | Bidirectional sync between `dispatch.yml` and database |
 | `GitHubAppService` | JWT auth, installation tokens, repo listing, manifest flow |
-| `OutputHandler` | Routes agent output (GitHub comments, reactions) via `gh` CLI |
+| `OutputHandler` | Routes agent output (GitHub comments, reactions) via `GitHubApiClient` |
+| `GitHubApiClient` | HTTP client for GitHub API using installation tokens |
 | `PromptRenderer` | Template rendering with dot notation for event variables |
 | `WorktreeManager` | Creates isolated git worktrees for agent execution |
 | `ToolRegistry` | Resolves available tools for agents |
@@ -48,10 +49,7 @@ Dispatch is a self-hosted webhook server that receives GitHub webhook events and
 
 ## GitHub Operations
 
-Use `gh` CLI for all GitHub interactions:
-- `gh issue comment <number> --body "..."` to post comments
-- `gh pr create --title "..." --body "..."` to create PRs
-- `gh api` for other operations
+Use `GitHubApiClient` for all GitHub API interactions (comments, reactions). It authenticates via GitHub App installation tokens through `GitHubAppService`. Do not use `gh` CLI for outgoing GitHub operations.
 
 ## dispatch.yml
 
