@@ -10,8 +10,9 @@ You are an AI agent working on the Dispatch project — a self-hosted webhook se
 
 ## Architecture
 
-- Webhook endpoint at `POST /api/webhook`
+- Webhook endpoint at `POST /api/webhook` — auto-detects source (GitHub, GitLab) via `EventSourceRegistry`
 - Rule matching engine with filters (AND logic)
+- Multi-agent pipelines with `depends_on` for sequential workflows
 - Two executors: Laravel AI SDK and Claude CLI
 - Agent tools: Read, Edit, Write, Bash, Glob, Grep
 - Worktree isolation for concurrent agents
@@ -30,9 +31,6 @@ You are an AI agent working on the Dispatch project — a self-hosted webhook se
 
 ## GitHub Operations
 
-Use `gh` CLI for all GitHub interactions:
-- `gh issue comment <number> --body "..."` to post comments
-- `gh pr create --title "..." --body "..."` to create PRs
-- `gh api` for other operations
+Use `GitHubApiClient` for all outgoing GitHub API interactions (comments, reactions, PRs). It authenticates via GitHub App installation tokens through `GitHubAppService`. Do not use `gh` CLI for outgoing GitHub operations.
 
 Always work from the project root directory.

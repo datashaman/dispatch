@@ -4,13 +4,17 @@ Dispatch is a self-hosted webhook server that receives GitHub webhook events and
 
 ## Architecture
 
-- Webhook endpoint at `POST /api/webhook` — validates GitHub signatures, matches rules, dispatches agents
+- Webhook endpoint at `POST /api/webhook` — auto-detects source (GitHub, GitLab), verifies signatures, matches rules, dispatches agents
+- Multi-source event system with pluggable `EventSource`, `OutputAdapter`, and `ThreadKeyDeriver` contracts
 - Rule matching engine with field filters (equals, contains, regex, etc.)
+- Multi-agent pipelines with `depends_on` for sequential workflows
 - Two executors: Laravel AI SDK (`laravel-ai`) and Claude CLI (`claude-cli`)
 - Agent tools: Read, Edit, Write, Bash, Glob, Grep
 - Worktree isolation for concurrent agent execution
 - Config sync between `dispatch.yml` files and database
 - GitHub App integration for automated repo management
+- Prompt injection defense for webhook payloads
+- Live agent streaming via Laravel Reverb
 
 ## Tech Stack
 
@@ -27,11 +31,14 @@ Dispatch is a self-hosted webhook server that receives GitHub webhook events and
 
 | Service | Purpose |
 |---------|--------|
+| `EventSourceRegistry` | Auto-detects webhook source, resolves EventSource/OutputAdapter/ThreadKeyDeriver |
 | `RuleMatchingEngine` | Matches webhook events to rules using filters |
 | `AgentDispatcher` | Queues agent jobs |
+| `PipelineOrchestrator` | Orchestrates multi-agent pipelines with `depends_on` |
+| `ConversationMemory` | Thread-based conversation memory for agent continuity |
 | `ConfigSyncer` | Bidirectional sync between `dispatch.yml` and database |
 | `GitHubAppService` | JWT auth, installation tokens, repo listing, manifest flow |
-| `OutputHandler` | Routes agent output (GitHub comments, reactions) via `GitHubApiClient` |
+| `OutputHandler` | Routes agent output via source-specific OutputAdapters (with legacy fallback) |
 | `GitHubApiClient` | HTTP client for GitHub API using installation tokens |
 | `PromptRenderer` | Template rendering with dot notation for event variables |
 | `WorktreeManager` | Creates isolated git worktrees for agent execution |
