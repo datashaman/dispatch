@@ -5,6 +5,7 @@ use App\Models\AgentRun;
 use App\Models\GitHubInstallation;
 use App\Models\Project;
 use App\Models\WebhookLog;
+use App\Services\GitHubAppService;
 use App\Services\OutputHandler;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -31,6 +32,10 @@ beforeEach(function () {
         'repository' => ['full_name' => 'owner/repo'],
         'installation' => ['id' => 12345],
     ];
+
+    $mockAppService = Mockery::mock(GitHubAppService::class);
+    $mockAppService->shouldReceive('getInstallationToken')->andReturn('fake-token');
+    app()->instance(GitHubAppService::class, $mockAppService);
 });
 
 test('log output is always saved to agent_runs.output by default', function () {
@@ -46,7 +51,7 @@ test('log output is always saved to agent_runs.output by default', function () {
 
 test('github_comment posts comment on issue via GitHub API', function () {
     Http::fake([
-        'api.github.com/app/installations/12345/access_tokens' => Http::response(['token' => 'fake-token']),
+
         'api.github.com/repos/owner/repo/issues/42/comments' => Http::response(['id' => 1], 201),
     ]);
 
@@ -64,7 +69,7 @@ test('github_comment posts comment on issue via GitHub API', function () {
 
 test('github_comment posts comment on pull request via GitHub API', function () {
     Http::fake([
-        'api.github.com/app/installations/12345/access_tokens' => Http::response(['token' => 'fake-token']),
+
         'api.github.com/repos/owner/repo/issues/99/comments' => Http::response(['id' => 1], 201),
     ]);
 
@@ -78,7 +83,7 @@ test('github_comment posts comment on pull request via GitHub API', function () 
 
 test('github_comment posts comment on discussion via GitHub API', function () {
     Http::fake([
-        'api.github.com/app/installations/12345/access_tokens' => Http::response(['token' => 'fake-token']),
+
         'api.github.com/repos/owner/repo/discussions/7/comments' => Http::response(['id' => 1], 201),
     ]);
 
@@ -92,7 +97,7 @@ test('github_comment posts comment on discussion via GitHub API', function () {
 
 test('addReaction adds reaction to comment via GitHub API', function () {
     Http::fake([
-        'api.github.com/app/installations/12345/access_tokens' => Http::response(['token' => 'fake-token']),
+
         'api.github.com/repos/owner/repo/issues/comments/12345/reactions' => Http::response(['id' => 1], 201),
     ]);
 
@@ -111,7 +116,7 @@ test('addReaction adds reaction to comment via GitHub API', function () {
 
 test('addReaction uses pulls/comments for PR review comments', function () {
     Http::fake([
-        'api.github.com/app/installations/12345/access_tokens' => Http::response(['token' => 'fake-token']),
+
         'api.github.com/repos/owner/repo/pulls/comments/67890/reactions' => Http::response(['id' => 1], 201),
     ]);
 
@@ -127,7 +132,7 @@ test('addReaction uses pulls/comments for PR review comments', function () {
 
 test('addReaction uses discussions/comments for discussion comments', function () {
     Http::fake([
-        'api.github.com/app/installations/12345/access_tokens' => Http::response(['token' => 'fake-token']),
+
         'api.github.com/repos/owner/repo/discussions/comments/11111/reactions' => Http::response(['id' => 1], 201),
     ]);
 
@@ -165,7 +170,7 @@ test('github_comment without repo logs warning', function () {
 
 test('addReaction falls back to issue reaction when no comment', function () {
     Http::fake([
-        'api.github.com/app/installations/12345/access_tokens' => Http::response(['token' => 'fake-token']),
+
         'api.github.com/repos/owner/repo/issues/42/reactions' => Http::response(['id' => 1], 201),
     ]);
 
@@ -178,7 +183,7 @@ test('addReaction falls back to issue reaction when no comment', function () {
 
 test('both github_comment and github_reaction can be configured together', function () {
     Http::fake([
-        'api.github.com/app/installations/12345/access_tokens' => Http::response(['token' => 'fake-token']),
+
         'api.github.com/*' => Http::response(['id' => 1], 201),
     ]);
 
@@ -237,8 +242,14 @@ test('github_comment logs error when no installation found', function () {
 });
 
 test('installation ID from payload takes precedence over project lookup', function () {
+    $mockAppService = Mockery::mock(GitHubAppService::class);
+    $mockAppService->shouldReceive('getInstallationToken')
+        ->with(99999)
+        ->once()
+        ->andReturn('fake-token');
+    app()->instance(GitHubAppService::class, $mockAppService);
+
     Http::fake([
-        'api.github.com/app/installations/99999/access_tokens' => Http::response(['token' => 'fake-token']),
         'api.github.com/repos/owner/repo/issues/42/comments' => Http::response(['id' => 1], 201),
     ]);
 
@@ -251,6 +262,6 @@ test('installation ID from payload takes precedence over project lookup', functi
 
     app(OutputHandler::class)->handle($this->agentRun, $outputConfig, $payload);
 
-    // Should use installation 99999 from payload, not 12345 from project
-    Http::assertSent(fn ($request) => str_contains($request->url(), 'installations/99999'));
+    // The mock asserts getInstallationToken was called with 99999, not 12345
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/repos/owner/repo/issues/42/comments'));
 });

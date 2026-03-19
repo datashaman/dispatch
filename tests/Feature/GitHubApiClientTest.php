@@ -3,6 +3,7 @@
 use App\Models\GitHubInstallation;
 use App\Models\Project;
 use App\Services\GitHubApiClient;
+use App\Services\GitHubAppService;
 use Illuminate\Support\Facades\Http;
 
 beforeEach(function () {
@@ -11,14 +12,13 @@ beforeEach(function () {
         'account_login' => 'owner',
     ]);
 
-    Http::fake([
-        'api.github.com/app/installations/12345/access_tokens' => Http::response(['token' => 'fake-token']),
-    ]);
+    $mockAppService = Mockery::mock(GitHubAppService::class);
+    $mockAppService->shouldReceive('getInstallationToken')->andReturn('fake-token');
+    app()->instance(GitHubAppService::class, $mockAppService);
 });
 
 test('postComment sends POST request to correct endpoint', function () {
     Http::fake([
-        'api.github.com/app/installations/12345/access_tokens' => Http::response(['token' => 'fake-token']),
         'api.github.com/repos/owner/repo/issues/42/comments' => Http::response(['id' => 1], 201),
     ]);
 
@@ -37,7 +37,6 @@ test('postComment sends POST request to correct endpoint', function () {
 
 test('postComment returns false on failure', function () {
     Http::fake([
-        'api.github.com/app/installations/12345/access_tokens' => Http::response(['token' => 'fake-token']),
         'api.github.com/repos/owner/repo/issues/42/comments' => Http::response(['message' => 'Not Found'], 404),
     ]);
 
@@ -49,7 +48,6 @@ test('postComment returns false on failure', function () {
 
 test('addCommentReaction sends reaction to comment endpoint', function () {
     Http::fake([
-        'api.github.com/app/installations/12345/access_tokens' => Http::response(['token' => 'fake-token']),
         'api.github.com/repos/owner/repo/issues/comments/999/reactions' => Http::response(['id' => 1], 201),
     ]);
 
@@ -66,7 +64,6 @@ test('addCommentReaction sends reaction to comment endpoint', function () {
 
 test('addIssueReaction sends reaction to issue endpoint', function () {
     Http::fake([
-        'api.github.com/app/installations/12345/access_tokens' => Http::response(['token' => 'fake-token']),
         'api.github.com/repos/owner/repo/issues/42/reactions' => Http::response(['id' => 1], 201),
     ]);
 
@@ -116,7 +113,6 @@ test('resolveInstallationId returns null when project not found', function () {
 
 test('requests include correct GitHub API headers', function () {
     Http::fake([
-        'api.github.com/app/installations/12345/access_tokens' => Http::response(['token' => 'fake-token']),
         'api.github.com/repos/owner/repo/issues/1/comments' => Http::response(['id' => 1], 201),
     ]);
 
