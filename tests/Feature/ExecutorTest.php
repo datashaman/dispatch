@@ -469,7 +469,7 @@ test('ProcessAgentRun job renders prompt template with payload', function () {
     $agentRun->refresh();
     expect($agentRun->status)->toBe('success');
 
-    DispatchAgent::assertPrompted('Review issue "Bug in login" by octocat');
+    DispatchAgent::assertPrompted(fn ($prompt) => str_contains($prompt->prompt, 'Bug in login') && str_contains($prompt->prompt, '<user-content field="issue-title">'));
 });
 
 test('DispatchAgent implements Agent and HasTools interfaces', function () {
