@@ -7,9 +7,11 @@ use App\Contracts\Executor;
 use App\DataTransferObjects\ExecutionResult;
 use App\Models\AgentRun;
 use App\Services\ToolRegistry;
+use Illuminate\Broadcasting\Channel;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Laravel\Ai\Contracts\Tool;
+use Laravel\Ai\Responses\StreamedAgentResponse;
 use Throwable;
 
 class LaravelAiExecutor implements Executor
@@ -50,35 +52,41 @@ class LaravelAiExecutor implements Executor
                 $agent->withConversationHistory($conversationHistory);
             }
 
-            Log::info('LaravelAiExecutor: calling Anthropic API', [
+            Log::info('LaravelAiExecutor: calling Anthropic API (streaming)', [
                 'agent_run_id' => $run->id,
             ]);
 
-            $response = $agent->prompt(
+            $channel = new Channel('agent-run.'.$run->id);
+            $result = null;
+
+            $agent->broadcastNow(
                 prompt: $renderedPrompt,
+                channels: [$channel],
                 provider: $provider,
                 model: $model,
-            );
+            )->then(function (StreamedAgentResponse $response) use ($run, $startTime, &$result) {
+                Log::info('LaravelAiExecutor: stream completed', [
+                    'agent_run_id' => $run->id,
+                    'prompt_tokens' => $response->usage->promptTokens ?? null,
+                    'completion_tokens' => $response->usage->completionTokens ?? null,
+                    'output_length' => strlen($response->text ?? ''),
+                ]);
 
-            Log::info('LaravelAiExecutor: API response received', [
-                'agent_run_id' => $run->id,
-                'prompt_tokens' => $response->usage->promptTokens ?? null,
-                'completion_tokens' => $response->usage->completionTokens ?? null,
-                'steps_count' => $response->steps->count(),
-                'output_length' => strlen($response->text ?? ''),
-            ]);
+                $durationMs = (int) ((hrtime(true) - $startTime) / 1_000_000);
+                $tokensUsed = $response->usage->promptTokens + $response->usage->completionTokens;
 
-            $durationMs = (int) ((hrtime(true) - $startTime) / 1_000_000);
-            $tokensUsed = $response->usage->promptTokens + $response->usage->completionTokens;
+                $result = new ExecutionResult(
+                    status: 'success',
+                    output: $response->text,
+                    tokensUsed: $tokensUsed,
+                    durationMs: $durationMs,
+                );
+            });
 
-            $steps = $response->steps->map(fn ($step) => $step->toArray())->toArray();
-
-            return new ExecutionResult(
-                status: 'success',
-                output: $response->text,
-                steps: $steps ?: null,
-                tokensUsed: $tokensUsed,
-                durationMs: $durationMs,
+            return $result ?? new ExecutionResult(
+                status: 'failed',
+                error: 'Stream completed without producing a result',
+                durationMs: (int) ((hrtime(true) - $startTime) / 1_000_000),
             );
         } catch (Throwable $e) {
             $durationMs = (int) ((hrtime(true) - $startTime) / 1_000_000);
