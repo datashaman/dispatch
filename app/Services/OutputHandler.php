@@ -5,10 +5,13 @@ namespace App\Services;
 use App\DataTransferObjects\OutputConfig;
 use App\Models\AgentRun;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Process;
 
 class OutputHandler
 {
+    public function __construct(
+        protected GitHubApiClient $github,
+    ) {}
+
     /**
      * Handle output routing for a completed agent run.
      *
@@ -58,24 +61,28 @@ class OutputHandler
             return;
         }
 
-        $result = Process::input(json_encode(['body' => $output]))
-            ->run([
-                'gh', 'api',
-                '-X', 'POST',
-                "/repos/{$repo}/{$resource['type']}/{$resource['number']}/comments",
-                '--input', '-',
+        $installationId = $this->resolveInstallationId($repo, $payload);
+
+        if (! $installationId) {
+            Log::error('No GitHub installation found for repo', [
+                'repo' => $repo,
+                'agent_run_id' => $agentRun->id,
             ]);
 
-        if (! $result->successful()) {
-            Log::error('Failed to post GitHub comment', [
-                'agent_run_id' => $agentRun->id,
-                'error' => trim($result->errorOutput()),
-            ]);
+            return;
         }
+
+        $this->github->postComment(
+            $repo,
+            $resource['type'],
+            $resource['number'],
+            $output,
+            $installationId,
+        );
     }
 
     /**
-     * Add a reaction to the triggering comment via gh CLI.
+     * Add a reaction to the triggering comment via GitHub API.
      *
      * @param  array<string, mixed>  $payload
      */
@@ -89,12 +96,20 @@ class OutputHandler
             return;
         }
 
+        $installationId = $this->resolveInstallationId($repo, $payload);
+
+        if (! $installationId) {
+            Log::error('No GitHub installation found for repo', ['repo' => $repo]);
+
+            return;
+        }
+
         // Try comment reaction first, fall back to issue/PR reaction
         $commentId = $payload['comment']['id'] ?? null;
 
         if ($commentId) {
-            $resourceType = $this->resolveCommentResourceType($payload);
-            $endpoint = "/repos/{$repo}/{$resourceType}/{$commentId}/reactions";
+            $commentType = $this->resolveCommentResourceType($payload);
+            $this->github->addCommentReaction($repo, $commentType, $commentId, $reaction, $installationId);
         } else {
             $resource = $this->resolveGitHubResource($payload);
 
@@ -104,21 +119,7 @@ class OutputHandler
                 return;
             }
 
-            $endpoint = "/repos/{$repo}/{$resource['type']}/{$resource['number']}/reactions";
-        }
-
-        $result = Process::run([
-            'gh', 'api',
-            '-X', 'POST',
-            $endpoint,
-            '-f', "content={$reaction}",
-        ]);
-
-        if (! $result->successful()) {
-            Log::error('Failed to add GitHub reaction', [
-                'reaction' => $reaction,
-                'error' => trim($result->errorOutput()),
-            ]);
+            $this->github->addIssueReaction($repo, $resource['type'], $resource['number'], $reaction, $installationId);
         }
     }
 
@@ -170,5 +171,23 @@ class OutputHandler
         }
 
         return 'issues/comments';
+    }
+
+    /**
+     * Resolve the installation ID from the payload or project lookup.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    protected function resolveInstallationId(string $repo, array $payload): ?int
+    {
+        // Prefer installation ID from the webhook payload (most reliable)
+        $payloadInstallationId = $payload['installation']['id'] ?? null;
+
+        if ($payloadInstallationId) {
+            return (int) $payloadInstallationId;
+        }
+
+        // Fall back to project's linked installation
+        return $this->github->resolveInstallationId($repo);
     }
 }

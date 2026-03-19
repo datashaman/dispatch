@@ -1,14 +1,15 @@
 <?php
 
 use App\Models\Project;
+use App\Services\GitHubAppService;
 use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Redis;
 
 it('passes all checks when everything is healthy', function () {
-    Process::fake([
-        '*' => Process::result(output: 'Logged in to github.com'),
-    ]);
+    $mock = Mockery::mock(GitHubAppService::class);
+    $mock->shouldReceive('isConfigured')->andReturn(true);
+    $mock->shouldReceive('getApp')->andReturn(['name' => 'dispatch-test']);
+    app()->instance(GitHubAppService::class, $mock);
 
     Redis::shouldReceive('ping')->once()->andReturn(true);
 
@@ -29,10 +30,10 @@ it('passes all checks when everything is healthy', function () {
     @rmdir($tempDir);
 });
 
-it('fails when gh cli is not authenticated', function () {
-    Process::fake([
-        '*' => Process::result(exitCode: 1, errorOutput: 'You are not logged in to any GitHub hosts'),
-    ]);
+it('fails when github app is not configured', function () {
+    $mock = Mockery::mock(GitHubAppService::class);
+    $mock->shouldReceive('isConfigured')->andReturn(false);
+    app()->instance(GitHubAppService::class, $mock);
 
     Redis::shouldReceive('ping')->once()->andReturn(true);
 
@@ -41,13 +42,14 @@ it('fails when gh cli is not authenticated', function () {
 
     expect($exitCode)->toBe(1);
     expect($output)->toContain('FAIL');
-    expect($output)->toContain('Not authenticated');
+    expect($output)->toContain('Not configured');
 });
 
-it('fails when gh cli is not installed', function () {
-    Process::fake([
-        '*' => Process::result(exitCode: 127, errorOutput: 'command not found: gh'),
-    ]);
+it('fails when github app cannot connect', function () {
+    $mock = Mockery::mock(GitHubAppService::class);
+    $mock->shouldReceive('isConfigured')->andReturn(true);
+    $mock->shouldReceive('getApp')->andThrow(new RuntimeException('Connection refused'));
+    app()->instance(GitHubAppService::class, $mock);
 
     Redis::shouldReceive('ping')->once()->andReturn(true);
 
@@ -56,13 +58,14 @@ it('fails when gh cli is not installed', function () {
 
     expect($exitCode)->toBe(1);
     expect($output)->toContain('FAIL');
-    expect($output)->toContain('Not installed');
+    expect($output)->toContain('cannot connect');
 });
 
 it('fails when redis is not reachable', function () {
-    Process::fake([
-        '*' => Process::result(output: 'Logged in'),
-    ]);
+    $mock = Mockery::mock(GitHubAppService::class);
+    $mock->shouldReceive('isConfigured')->andReturn(true);
+    $mock->shouldReceive('getApp')->andReturn(['name' => 'dispatch-test']);
+    app()->instance(GitHubAppService::class, $mock);
 
     Redis::shouldReceive('ping')->once()->andThrow(new RuntimeException('Connection refused'));
 
@@ -75,9 +78,10 @@ it('fails when redis is not reachable', function () {
 });
 
 it('fails when a project path does not exist', function () {
-    Process::fake([
-        '*' => Process::result(output: 'Logged in'),
-    ]);
+    $mock = Mockery::mock(GitHubAppService::class);
+    $mock->shouldReceive('isConfigured')->andReturn(true);
+    $mock->shouldReceive('getApp')->andReturn(['name' => 'dispatch-test']);
+    app()->instance(GitHubAppService::class, $mock);
 
     Redis::shouldReceive('ping')->once()->andReturn(true);
 
@@ -92,9 +96,10 @@ it('fails when a project path does not exist', function () {
 });
 
 it('fails when dispatch.yml is missing for a project', function () {
-    Process::fake([
-        '*' => Process::result(output: 'Logged in'),
-    ]);
+    $mock = Mockery::mock(GitHubAppService::class);
+    $mock->shouldReceive('isConfigured')->andReturn(true);
+    $mock->shouldReceive('getApp')->andReturn(['name' => 'dispatch-test']);
+    app()->instance(GitHubAppService::class, $mock);
 
     Redis::shouldReceive('ping')->once()->andReturn(true);
 
@@ -113,9 +118,10 @@ it('fails when dispatch.yml is missing for a project', function () {
 });
 
 it('fails when dispatch.yml is invalid for a project', function () {
-    Process::fake([
-        '*' => Process::result(output: 'Logged in'),
-    ]);
+    $mock = Mockery::mock(GitHubAppService::class);
+    $mock->shouldReceive('isConfigured')->andReturn(true);
+    $mock->shouldReceive('getApp')->andReturn(['name' => 'dispatch-test']);
+    app()->instance(GitHubAppService::class, $mock);
 
     Redis::shouldReceive('ping')->once()->andReturn(true);
 
@@ -136,9 +142,10 @@ it('fails when dispatch.yml is invalid for a project', function () {
 });
 
 it('passes with no projects registered', function () {
-    Process::fake([
-        '*' => Process::result(output: 'Logged in'),
-    ]);
+    $mock = Mockery::mock(GitHubAppService::class);
+    $mock->shouldReceive('isConfigured')->andReturn(true);
+    $mock->shouldReceive('getApp')->andReturn(['name' => 'dispatch-test']);
+    app()->instance(GitHubAppService::class, $mock);
 
     Redis::shouldReceive('ping')->once()->andReturn(true);
 
@@ -151,9 +158,10 @@ it('passes with no projects registered', function () {
 });
 
 it('reports pass and fail for mixed project states', function () {
-    Process::fake([
-        '*' => Process::result(output: 'Logged in'),
-    ]);
+    $mock = Mockery::mock(GitHubAppService::class);
+    $mock->shouldReceive('isConfigured')->andReturn(true);
+    $mock->shouldReceive('getApp')->andReturn(['name' => 'dispatch-test']);
+    app()->instance(GitHubAppService::class, $mock);
 
     Redis::shouldReceive('ping')->once()->andReturn(true);
 
