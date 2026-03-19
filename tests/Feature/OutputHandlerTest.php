@@ -2,14 +2,24 @@
 
 use App\DataTransferObjects\OutputConfig;
 use App\Models\AgentRun;
+use App\Models\GitHubInstallation;
 use App\Models\Project;
 use App\Models\WebhookLog;
+use App\Services\GitHubAppService;
 use App\Services\OutputHandler;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Process;
 
 beforeEach(function () {
-    $this->project = Project::factory()->create(['repo' => 'owner/repo', 'path' => '/tmp/test']);
+    $this->installation = GitHubInstallation::factory()->create([
+        'installation_id' => 12345,
+        'account_login' => 'owner',
+    ]);
+    $this->project = Project::factory()->create([
+        'repo' => 'owner/repo',
+        'path' => '/tmp/test',
+        'github_installation_id' => $this->installation->id,
+    ]);
     $this->webhookLog = WebhookLog::factory()->create(['repo' => 'owner/repo']);
     $this->agentRun = AgentRun::factory()->create([
         'webhook_log_id' => $this->webhookLog->id,
@@ -17,191 +27,179 @@ beforeEach(function () {
         'status' => 'success',
         'output' => 'Agent analysis complete. The code looks good.',
     ]);
-    $this->handler = new OutputHandler;
+
+    $this->basePayload = [
+        'repository' => ['full_name' => 'owner/repo'],
+        'installation' => ['id' => 12345],
+    ];
+
+    $mockAppService = Mockery::mock(GitHubAppService::class);
+    $mockAppService->shouldReceive('getInstallationToken')->andReturn('fake-token');
+    app()->instance(GitHubAppService::class, $mockAppService);
 });
 
 test('log output is always saved to agent_runs.output by default', function () {
     $outputConfig = new OutputConfig(log: true, githubComment: false);
 
-    Process::fake();
+    Http::fake();
 
-    $this->handler->handle($this->agentRun, $outputConfig, []);
+    app(OutputHandler::class)->handle($this->agentRun, $outputConfig, []);
 
-    // Output is already stored in agent_runs.output by ProcessAgentRun — no process calls needed
-    Process::assertNothingRan();
+    Http::assertNothingSent();
     expect($this->agentRun->output)->toBe('Agent analysis complete. The code looks good.');
 });
 
-test('github_comment posts comment on issue via gh CLI', function () {
+test('github_comment posts comment on issue via GitHub API', function () {
+    Http::fake([
+
+        'api.github.com/repos/owner/repo/issues/42/comments' => Http::response(['id' => 1], 201),
+    ]);
+
     $outputConfig = new OutputConfig(githubComment: true);
+    $payload = array_merge($this->basePayload, ['issue' => ['number' => 42]]);
 
-    Process::fake();
+    app(OutputHandler::class)->handle($this->agentRun, $outputConfig, $payload);
 
-    $payload = [
-        'repository' => ['full_name' => 'owner/repo'],
-        'issue' => ['number' => 42],
-    ];
-
-    $this->handler->handle($this->agentRun, $outputConfig, $payload);
-
-    Process::assertRan(function ($process) {
-        return $process->command[0] === 'gh'
-            && $process->command[1] === 'api'
-            && $process->command[3] === 'POST'
-            && str_contains($process->command[4], '/repos/owner/repo/issues/42/comments')
-            && in_array('--input', $process->command)
-            && in_array('-', $process->command);
+    Http::assertSent(function ($request) {
+        return str_contains($request->url(), '/repos/owner/repo/issues/42/comments')
+            && $request->method() === 'POST'
+            && $request['body'] === 'Agent analysis complete. The code looks good.';
     });
 });
 
-test('github_comment posts comment on pull request via gh CLI', function () {
+test('github_comment posts comment on pull request via GitHub API', function () {
+    Http::fake([
+
+        'api.github.com/repos/owner/repo/issues/99/comments' => Http::response(['id' => 1], 201),
+    ]);
+
     $outputConfig = new OutputConfig(githubComment: true);
+    $payload = array_merge($this->basePayload, ['pull_request' => ['number' => 99]]);
 
-    Process::fake();
+    app(OutputHandler::class)->handle($this->agentRun, $outputConfig, $payload);
 
-    $payload = [
-        'repository' => ['full_name' => 'owner/repo'],
-        'pull_request' => ['number' => 99],
-    ];
-
-    $this->handler->handle($this->agentRun, $outputConfig, $payload);
-
-    Process::assertRan(function ($process) {
-        return str_contains($process->command[4], '/repos/owner/repo/issues/99/comments');
-    });
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/repos/owner/repo/issues/99/comments'));
 });
 
-test('github_comment posts comment on discussion via gh CLI', function () {
+test('github_comment posts comment on discussion via GitHub API', function () {
+    Http::fake([
+
+        'api.github.com/repos/owner/repo/discussions/7/comments' => Http::response(['id' => 1], 201),
+    ]);
+
     $outputConfig = new OutputConfig(githubComment: true);
+    $payload = array_merge($this->basePayload, ['discussion' => ['number' => 7]]);
 
-    Process::fake();
+    app(OutputHandler::class)->handle($this->agentRun, $outputConfig, $payload);
 
-    $payload = [
-        'repository' => ['full_name' => 'owner/repo'],
-        'discussion' => ['number' => 7],
-    ];
-
-    $this->handler->handle($this->agentRun, $outputConfig, $payload);
-
-    Process::assertRan(function ($process) {
-        return str_contains($process->command[4], '/repos/owner/repo/discussions/7/comments');
-    });
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/repos/owner/repo/discussions/7/comments'));
 });
 
-test('addReaction adds reaction to comment via gh CLI', function () {
-    Process::fake();
+test('addReaction adds reaction to comment via GitHub API', function () {
+    Http::fake([
 
-    $payload = [
-        'repository' => ['full_name' => 'owner/repo'],
+        'api.github.com/repos/owner/repo/issues/comments/12345/reactions' => Http::response(['id' => 1], 201),
+    ]);
+
+    $payload = array_merge($this->basePayload, [
         'issue' => ['number' => 42],
         'comment' => ['id' => 12345],
-    ];
+    ]);
 
-    $this->handler->addReaction('eyes', $payload);
+    app(OutputHandler::class)->addReaction('eyes', $payload);
 
-    Process::assertRan(function ($process) {
-        return $process->command[0] === 'gh'
-            && $process->command[1] === 'api'
-            && $process->command[3] === 'POST'
-            && str_contains($process->command[4], '/repos/owner/repo/issues/comments/12345/reactions')
-            && str_contains($process->command[6], 'eyes');
+    Http::assertSent(function ($request) {
+        return str_contains($request->url(), '/repos/owner/repo/issues/comments/12345/reactions')
+            && $request['content'] === 'eyes';
     });
 });
 
 test('addReaction uses pulls/comments for PR review comments', function () {
-    Process::fake();
+    Http::fake([
 
-    $payload = [
-        'repository' => ['full_name' => 'owner/repo'],
+        'api.github.com/repos/owner/repo/pulls/comments/67890/reactions' => Http::response(['id' => 1], 201),
+    ]);
+
+    $payload = array_merge($this->basePayload, [
         'pull_request' => ['number' => 99],
         'comment' => ['id' => 67890],
-    ];
+    ]);
 
-    $this->handler->addReaction('rocket', $payload);
+    app(OutputHandler::class)->addReaction('rocket', $payload);
 
-    Process::assertRan(function ($process) {
-        return str_contains($process->command[4], '/repos/owner/repo/pulls/comments/67890/reactions');
-    });
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/repos/owner/repo/pulls/comments/67890/reactions'));
 });
 
 test('addReaction uses discussions/comments for discussion comments', function () {
-    Process::fake();
+    Http::fake([
 
-    $payload = [
-        'repository' => ['full_name' => 'owner/repo'],
+        'api.github.com/repos/owner/repo/discussions/comments/11111/reactions' => Http::response(['id' => 1], 201),
+    ]);
+
+    $payload = array_merge($this->basePayload, [
         'discussion' => ['number' => 7],
         'comment' => ['id' => 11111],
-    ];
+    ]);
 
-    $this->handler->addReaction('heart', $payload);
+    app(OutputHandler::class)->addReaction('heart', $payload);
 
-    Process::assertRan(function ($process) {
-        return str_contains($process->command[4], '/repos/owner/repo/discussions/comments/11111/reactions');
-    });
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/repos/owner/repo/discussions/comments/11111/reactions'));
 });
 
 test('no output config with github_comment disabled does nothing', function () {
-    Process::fake();
+    Http::fake();
 
     $outputConfig = new OutputConfig(log: true, githubComment: false);
+    $payload = array_merge($this->basePayload, ['issue' => ['number' => 42]]);
 
-    $payload = [
-        'repository' => ['full_name' => 'owner/repo'],
-        'issue' => ['number' => 42],
-    ];
+    app(OutputHandler::class)->handle($this->agentRun, $outputConfig, $payload);
 
-    $this->handler->handle($this->agentRun, $outputConfig, $payload);
-
-    Process::assertNothingRan();
+    Http::assertNothingSent();
 });
 
 test('github_comment without repo logs warning', function () {
     $outputConfig = new OutputConfig(githubComment: true);
 
-    Process::fake();
+    Http::fake();
     Log::shouldReceive('warning')->once()->with('Could not determine GitHub resource for comment', Mockery::any());
 
-    $this->handler->handle($this->agentRun, $outputConfig, []);
+    app(OutputHandler::class)->handle($this->agentRun, $outputConfig, []);
 
-    Process::assertNothingRan();
+    Http::assertNothingSent();
 });
 
 test('addReaction falls back to issue reaction when no comment', function () {
-    Process::fake();
+    Http::fake([
 
-    $payload = [
-        'repository' => ['full_name' => 'owner/repo'],
-        'issue' => ['number' => 42],
-    ];
+        'api.github.com/repos/owner/repo/issues/42/reactions' => Http::response(['id' => 1], 201),
+    ]);
 
-    $this->handler->addReaction('eyes', $payload);
+    $payload = array_merge($this->basePayload, ['issue' => ['number' => 42]]);
 
-    Process::assertRan(function ($process) {
-        return str_contains($process->command[4] ?? '', '/repos/owner/repo/issues/42/reactions');
-    });
+    app(OutputHandler::class)->addReaction('eyes', $payload);
+
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/repos/owner/repo/issues/42/reactions'));
 });
 
 test('both github_comment and github_reaction can be configured together', function () {
+    Http::fake([
+
+        'api.github.com/*' => Http::response(['id' => 1], 201),
+    ]);
+
     $outputConfig = new OutputConfig(githubComment: true, githubReaction: 'eyes');
-
-    Process::fake();
-
-    $payload = [
-        'repository' => ['full_name' => 'owner/repo'],
+    $payload = array_merge($this->basePayload, [
         'issue' => ['number' => 42],
         'comment' => ['id' => 12345],
-    ];
+    ]);
 
-    $this->handler->handle($this->agentRun, $outputConfig, $payload);
+    app(OutputHandler::class)->handle($this->agentRun, $outputConfig, $payload);
 
-    // Should run the comment process
-    Process::assertRan(function ($process) {
-        return str_contains($process->command[4] ?? '', '/comments');
-    });
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/comments'));
 });
 
 test('resolveGitHubResource returns correct type for each resource', function () {
-    $handler = new OutputHandler;
+    $handler = app(OutputHandler::class);
 
     // Issue
     $result = $handler->resolveGitHubResource(['issue' => ['number' => 1]]);
@@ -218,4 +216,52 @@ test('resolveGitHubResource returns correct type for each resource', function ()
     // Unknown
     $result = $handler->resolveGitHubResource(['push' => ['ref' => 'main']]);
     expect($result)->toBeNull();
+});
+
+test('github_comment logs error when no installation found', function () {
+    Http::fake();
+
+    // Create a project without a GitHub installation
+    $project = Project::factory()->create([
+        'repo' => 'other/repo',
+        'path' => '/tmp/other',
+        'github_installation_id' => null,
+    ]);
+
+    $outputConfig = new OutputConfig(githubComment: true);
+    $payload = [
+        'repository' => ['full_name' => 'other/repo'],
+        'issue' => ['number' => 1],
+    ];
+
+    Log::shouldReceive('error')->once()->with('No GitHub installation found for repo', Mockery::any());
+
+    app(OutputHandler::class)->handle($this->agentRun, $outputConfig, $payload);
+
+    Http::assertNothingSent();
+});
+
+test('installation ID from payload takes precedence over project lookup', function () {
+    $mockAppService = Mockery::mock(GitHubAppService::class);
+    $mockAppService->shouldReceive('getInstallationToken')
+        ->with(99999)
+        ->once()
+        ->andReturn('fake-token');
+    app()->instance(GitHubAppService::class, $mockAppService);
+
+    Http::fake([
+        'api.github.com/repos/owner/repo/issues/42/comments' => Http::response(['id' => 1], 201),
+    ]);
+
+    $outputConfig = new OutputConfig(githubComment: true);
+    $payload = [
+        'repository' => ['full_name' => 'owner/repo'],
+        'installation' => ['id' => 99999], // Different from project's installation
+        'issue' => ['number' => 42],
+    ];
+
+    app(OutputHandler::class)->handle($this->agentRun, $outputConfig, $payload);
+
+    // The mock asserts getInstallationToken was called with 99999, not 12345
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/repos/owner/repo/issues/42/comments'));
 });

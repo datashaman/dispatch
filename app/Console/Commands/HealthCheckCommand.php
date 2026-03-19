@@ -4,8 +4,8 @@ namespace App\Console\Commands;
 
 use App\Models\Project;
 use App\Services\ConfigLoader;
+use App\Services\GitHubAppService;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Redis;
 
 class HealthCheckCommand extends Command
@@ -14,14 +14,14 @@ class HealthCheckCommand extends Command
 
     protected $description = 'Check system dependencies and project configurations';
 
-    public function handle(ConfigLoader $configLoader): int
+    public function handle(ConfigLoader $configLoader, GitHubAppService $githubApp): int
     {
         $this->info('Running health checks...');
         $this->newLine();
 
         $allPassed = true;
 
-        $allPassed = $this->checkGhCli() && $allPassed;
+        $allPassed = $this->checkGitHubApp($githubApp) && $allPassed;
         $allPassed = $this->checkRedis() && $allPassed;
         $allPassed = $this->checkProjects($configLoader) && $allPassed;
 
@@ -36,25 +36,24 @@ class HealthCheckCommand extends Command
         return $allPassed ? self::SUCCESS : self::FAILURE;
     }
 
-    private function checkGhCli(): bool
+    private function checkGitHubApp(GitHubAppService $githubApp): bool
     {
-        $result = Process::run('gh auth status');
+        if (! $githubApp->isConfigured()) {
+            $this->printCheck(false, 'GitHub App', 'Not configured. Set GITHUB_APP_ID and private key in .env.');
 
-        if ($result->successful()) {
-            $this->printCheck(true, 'GitHub CLI', 'Installed and authenticated');
+            return false;
+        }
+
+        try {
+            $app = $githubApp->getApp();
+            $this->printCheck(true, 'GitHub App', "Connected as \"{$app['name']}\"");
 
             return true;
+        } catch (\Throwable $e) {
+            $this->printCheck(false, 'GitHub App', 'Configured but cannot connect: '.$e->getMessage());
+
+            return false;
         }
-
-        $output = trim($result->errorOutput() ?: $result->output());
-
-        if (str_contains($output, 'not logged in') || str_contains($output, 'not authenticated')) {
-            $this->printCheck(false, 'GitHub CLI', 'Not authenticated. Run `gh auth login` to authenticate.');
-        } else {
-            $this->printCheck(false, 'GitHub CLI', 'Not installed or not working. Install from https://cli.github.com/');
-        }
-
-        return false;
     }
 
     private function checkRedis(): bool

@@ -5,6 +5,7 @@ use App\Models\Project;
 use App\Models\WebhookLog;
 use App\Services\RuleMatchingEngine;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Queue;
 use Symfony\Component\Yaml\Yaml;
 
 beforeEach(function () {
@@ -76,8 +77,8 @@ it('returns multiple matching rules in sort_order', function () {
     $result = $this->engine->match('owner/repo', 'issues.labeled', []);
 
     expect($result)->toHaveCount(2)
-        ->and($result[0]->id)->toBe('second')
-        ->and($result[1]->id)->toBe('first');
+        ->and($result[0]->id)->toBe('first')
+        ->and($result[1]->id)->toBe('second');
 });
 
 it('matches rule with no filters', function () {
@@ -351,6 +352,8 @@ it('integrates with webhook controller for missing project', function () {
 });
 
 it('integrates with webhook controller for matching rules', function () {
+    Queue::fake();
+
     writeDispatchYaml($this->tempDir, [
         ['id' => 'analyze', 'event' => 'issues.labeled', 'prompt' => 'Analyze'],
     ]);
@@ -375,6 +378,8 @@ it('integrates with webhook controller for matching rules', function () {
 });
 
 it('integrates with webhook controller for no matching rules', function () {
+    Queue::fake();
+
     writeDispatchYaml($this->tempDir, [
         ['id' => 'push-only', 'event' => 'push', 'prompt' => 'Push only'],
     ]);
@@ -406,7 +411,25 @@ it('logs error when project not found', function () {
         ->toThrow(RuleMatchingException::class);
 });
 
+it('returns matched rules sorted by sort_order', function () {
+    writeDispatchYaml($this->tempDir, [
+        ['id' => 'third', 'event' => 'issues.opened', 'prompt' => 'Third', 'sort_order' => 30],
+        ['id' => 'first', 'event' => 'issues.opened', 'prompt' => 'First', 'sort_order' => 10],
+        ['id' => 'second', 'event' => 'issues.opened', 'prompt' => 'Second', 'sort_order' => 20],
+    ]);
+    Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir]);
+
+    $result = $this->engine->match('owner/repo', 'issues.opened', ['issue' => ['number' => 1]]);
+
+    expect($result)->toHaveCount(3)
+        ->and($result[0]->id)->toBe('first')
+        ->and($result[1]->id)->toBe('second')
+        ->and($result[2]->id)->toBe('third');
+});
+
 it('updates webhook log with matched rules and processed status', function () {
+    Queue::fake();
+
     writeDispatchYaml($this->tempDir, [
         ['id' => 'analyze', 'event' => 'issues.labeled', 'prompt' => 'Analyze'],
     ]);

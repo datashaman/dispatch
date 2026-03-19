@@ -53,6 +53,7 @@ class RuleMatchingEngine
         }
 
         return $rules->filter(fn (RuleConfig $rule) => $this->evaluateFilters($rule, $payload))
+            ->sortBy('sortOrder')
             ->values();
     }
 
