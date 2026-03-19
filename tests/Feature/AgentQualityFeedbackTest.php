@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\FeedbackRating;
 use App\Models\AgentRun;
 use App\Models\AgentRunFeedback;
 use App\Models\User;
@@ -19,12 +20,12 @@ test('agent run feedback stores rating and comment', function () {
     $feedback = AgentRunFeedback::create([
         'agent_run_id' => $run->id,
         'user_id' => $user->id,
-        'rating' => 'helpful',
+        'rating' => FeedbackRating::Helpful,
         'comment' => 'Great analysis!',
     ]);
 
     $feedback->refresh();
-    expect($feedback->rating)->toBe('helpful');
+    expect($feedback->rating)->toBe(FeedbackRating::Helpful);
     expect($feedback->comment)->toBe('Great analysis!');
     expect($feedback->agentRun->id)->toBe($run->id);
     expect($feedback->user->id)->toBe($user->id);
@@ -55,17 +56,17 @@ test('feedback is unique per user per agent run', function () {
     AgentRunFeedback::create([
         'agent_run_id' => $run->id,
         'user_id' => $user->id,
-        'rating' => 'helpful',
+        'rating' => FeedbackRating::Helpful,
     ]);
 
     // Updating via updateOrCreate should work
     AgentRunFeedback::updateOrCreate(
         ['agent_run_id' => $run->id, 'user_id' => $user->id],
-        ['rating' => 'not_helpful', 'comment' => 'Changed my mind'],
+        ['rating' => FeedbackRating::NotHelpful, 'comment' => 'Changed my mind'],
     );
 
     expect(AgentRunFeedback::where('agent_run_id', $run->id)->where('user_id', $user->id)->count())->toBe(1);
-    expect(AgentRunFeedback::where('agent_run_id', $run->id)->where('user_id', $user->id)->first()->rating)->toBe('not_helpful');
+    expect(AgentRunFeedback::where('agent_run_id', $run->id)->where('user_id', $user->id)->first()->rating)->toBe(FeedbackRating::NotHelpful);
 });
 
 test('feedback is deleted when agent run is deleted', function () {
@@ -135,7 +136,7 @@ test('webhook show page submits helpful feedback', function () {
 
     $feedback = AgentRunFeedback::where('agent_run_id', $run->id)->first();
     expect($feedback)->not->toBeNull();
-    expect($feedback->rating)->toBe('helpful');
+    expect($feedback->rating)->toBe(FeedbackRating::Helpful);
     expect($feedback->user_id)->toBe($user->id);
 });
 
@@ -156,7 +157,7 @@ test('webhook show page submits feedback with comment', function () {
         ->assertSee('Feedback saved.');
 
     $feedback = AgentRunFeedback::where('agent_run_id', $run->id)->first();
-    expect($feedback->rating)->toBe('not_helpful');
+    expect($feedback->rating)->toBe(FeedbackRating::NotHelpful);
     expect($feedback->comment)->toBe('Missed the main issue');
 });
 
@@ -174,7 +175,7 @@ test('webhook show page updates existing feedback', function () {
     AgentRunFeedback::create([
         'agent_run_id' => $run->id,
         'user_id' => $user->id,
-        'rating' => 'helpful',
+        'rating' => FeedbackRating::Helpful,
     ]);
 
     // Change to not helpful
@@ -184,5 +185,5 @@ test('webhook show page updates existing feedback', function () {
         ->assertSee('Feedback saved.');
 
     expect(AgentRunFeedback::where('agent_run_id', $run->id)->count())->toBe(1);
-    expect(AgentRunFeedback::where('agent_run_id', $run->id)->first()->rating)->toBe('not_helpful');
+    expect(AgentRunFeedback::where('agent_run_id', $run->id)->first()->rating)->toBe(FeedbackRating::NotHelpful);
 });

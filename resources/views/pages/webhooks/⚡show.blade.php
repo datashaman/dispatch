@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\FeedbackRating;
 use App\Models\AgentRun;
 use App\Models\AgentRunFeedback;
 use App\Models\WebhookLog;
@@ -47,13 +48,15 @@ new #[Title('Webhook Log Detail')] class extends Component {
             return;
         }
 
+        $feedbackRating = FeedbackRating::from($rating);
+
         AgentRunFeedback::updateOrCreate(
             [
                 'agent_run_id' => $this->viewingAgentRunId,
                 'user_id' => $user->id,
             ],
             [
-                'rating' => $rating,
+                'rating' => $feedbackRating,
                 'comment' => $this->feedbackComment ?: null,
             ],
         );
@@ -485,7 +488,7 @@ new #[Title('Webhook Log Detail')] class extends Component {
                         <div class="flex items-center gap-3 mb-3">
                             <flux:button
                                 size="sm"
-                                variant="{{ ($existingFeedback?->rating ?? '') === 'helpful' ? 'primary' : 'ghost' }}"
+                                variant="{{ $existingFeedback?->rating === \App\Enums\FeedbackRating::Helpful ? 'primary' : 'ghost' }}"
                                 icon="hand-thumb-up"
                                 wire:click="submitFeedback('helpful')"
                             >
@@ -493,7 +496,7 @@ new #[Title('Webhook Log Detail')] class extends Component {
                             </flux:button>
                             <flux:button
                                 size="sm"
-                                variant="{{ ($existingFeedback?->rating ?? '') === 'not_helpful' ? 'danger' : 'ghost' }}"
+                                variant="{{ $existingFeedback?->rating === \App\Enums\FeedbackRating::NotHelpful ? 'danger' : 'ghost' }}"
                                 icon="hand-thumb-down"
                                 wire:click="submitFeedback('not_helpful')"
                             >
