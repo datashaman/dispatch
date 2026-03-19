@@ -145,6 +145,13 @@ class ConfigLoader
             }
         }
 
+        $dependsOn = [];
+        if (isset($ruleData['depends_on'])) {
+            $dependsOn = is_array($ruleData['depends_on'])
+                ? $ruleData['depends_on']
+                : [(string) $ruleData['depends_on']];
+        }
+
         return new RuleConfig(
             id: $ruleData['id'],
             event: $ruleData['event'],
@@ -156,6 +163,7 @@ class ConfigLoader
             agent: isset($ruleData['agent']) ? $this->parseAgentConfig($ruleData['agent']) : null,
             output: isset($ruleData['output']) ? $this->parseOutputConfig($ruleData['output']) : null,
             retry: isset($ruleData['retry']) ? $this->parseRetryConfig($ruleData['retry']) : null,
+            dependsOn: $dependsOn,
         );
     }
 
