@@ -1,7 +1,10 @@
 <?php
 
+use App\Enums\FeedbackRating;
 use App\Models\AgentRun;
+use App\Models\AgentRunFeedback;
 use App\Models\WebhookLog;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -12,6 +15,8 @@ new #[Title('Webhook Log Detail')] class extends Component {
     public bool $showAgentRunDetail = false;
     public bool $replaying = false;
     public string $replayMessage = '';
+    public string $feedbackComment = '';
+    public string $feedbackMessage = '';
 
     public function mount(int $webhookLog): void
     {
@@ -31,7 +36,44 @@ new #[Title('Webhook Log Detail')] class extends Component {
     public function viewAgentRun(int $id): void
     {
         $this->viewingAgentRunId = $id;
+        $this->feedbackComment = '';
+        $this->feedbackMessage = '';
         $this->showAgentRunDetail = true;
+    }
+
+    public function submitFeedback(string $rating): void
+    {
+        $user = Auth::user();
+        if (! $user || ! $this->viewingAgentRunId) {
+            return;
+        }
+
+        $feedbackRating = FeedbackRating::from($rating);
+
+        AgentRunFeedback::updateOrCreate(
+            [
+                'agent_run_id' => $this->viewingAgentRunId,
+                'user_id' => $user->id,
+            ],
+            [
+                'rating' => $feedbackRating,
+                'comment' => $this->feedbackComment ?: null,
+            ],
+        );
+
+        $this->feedbackMessage = 'Feedback saved.';
+    }
+
+    public function getExistingFeedback(): ?AgentRunFeedback
+    {
+        $user = Auth::user();
+        if (! $user || ! $this->viewingAgentRunId) {
+            return null;
+        }
+
+        return AgentRunFeedback::where('agent_run_id', $this->viewingAgentRunId)
+            ->where('user_id', $user->id)
+            ->first();
     }
 
     public function getViewingAgentRun(): ?AgentRun
@@ -428,6 +470,46 @@ new #[Title('Webhook Log Detail')] class extends Component {
                     <div class="mt-4">
                         <flux:text variant="subtle" class="text-xs uppercase text-red-600 dark:text-red-400">{{ __('Error') }}</flux:text>
                         <pre class="mt-2 rounded-lg bg-red-50 dark:bg-red-900/20 p-4 text-sm font-mono whitespace-pre-wrap text-red-800 dark:text-red-300">{{ $agentRun->error }}</pre>
+                    </div>
+                @endif
+
+                {{-- Quality Feedback --}}
+                @if ($agentRun->status === 'success' || $agentRun->status === 'failed')
+                    @php $existingFeedback = $this->getExistingFeedback(); @endphp
+                    <div class="mt-6 rounded-lg border border-zinc-200 dark:border-zinc-700 p-4">
+                        <flux:text variant="subtle" class="text-xs uppercase mb-3">{{ __('Was this helpful?') }}</flux:text>
+
+                        @if ($feedbackMessage)
+                            <flux:callout variant="success" class="mb-3">
+                                {{ $feedbackMessage }}
+                            </flux:callout>
+                        @endif
+
+                        <div class="flex items-center gap-3 mb-3">
+                            <flux:button
+                                size="sm"
+                                variant="{{ $existingFeedback?->rating === \App\Enums\FeedbackRating::Helpful ? 'primary' : 'ghost' }}"
+                                icon="hand-thumb-up"
+                                wire:click="submitFeedback('helpful')"
+                            >
+                                {{ __('Helpful') }}
+                            </flux:button>
+                            <flux:button
+                                size="sm"
+                                variant="{{ $existingFeedback?->rating === \App\Enums\FeedbackRating::NotHelpful ? 'danger' : 'ghost' }}"
+                                icon="hand-thumb-down"
+                                wire:click="submitFeedback('not_helpful')"
+                            >
+                                {{ __('Not helpful') }}
+                            </flux:button>
+                        </div>
+
+                        <flux:textarea
+                            wire:model="feedbackComment"
+                            placeholder="{{ __('Optional: tell us more...') }}"
+                            rows="2"
+                            class="text-sm"
+                        />
                     </div>
                 @endif
             @endif
