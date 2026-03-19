@@ -20,6 +20,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::livewire('projects/{project}/rules', 'pages::rules.index')->name('rules.index');
     Route::livewire('webhooks', 'pages::webhooks.index')->name('webhooks.index');
     Route::livewire('webhooks/{webhookLog}', 'pages::webhooks.show')->name('webhooks.show');
+    Route::livewire('cost', 'pages::cost.index')->name('cost.index');
 });
 
 require __DIR__.'/settings.php';

@@ -6,6 +6,7 @@ use App\Ai\Agents\DispatchAgent;
 use App\Contracts\Executor;
 use App\DataTransferObjects\ExecutionResult;
 use App\Models\AgentRun;
+use App\Services\CostCalculator;
 use App\Services\ToolRegistry;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
@@ -16,6 +17,7 @@ class LaravelAiExecutor implements Executor
 {
     public function __construct(
         protected ToolRegistry $toolRegistry,
+        protected CostCalculator $costCalculator,
     ) {}
 
     public function execute(AgentRun $run, string $renderedPrompt, array $agentConfig, array $conversationHistory = []): ExecutionResult
@@ -69,7 +71,11 @@ class LaravelAiExecutor implements Executor
             ]);
 
             $durationMs = (int) ((hrtime(true) - $startTime) / 1_000_000);
-            $tokensUsed = $response->usage->promptTokens + $response->usage->completionTokens;
+            $promptTokens = $response->usage->promptTokens ?? 0;
+            $completionTokens = $response->usage->completionTokens ?? 0;
+            $tokensUsed = $promptTokens + $completionTokens;
+
+            $cost = $this->costCalculator->calculate($promptTokens, $completionTokens, $model);
 
             $steps = $response->steps->map(fn ($step) => $step->toArray())->toArray();
 
@@ -78,6 +84,7 @@ class LaravelAiExecutor implements Executor
                 output: $response->text,
                 steps: $steps ?: null,
                 tokensUsed: $tokensUsed,
+                cost: $cost,
                 durationMs: $durationMs,
             );
         } catch (Throwable $e) {
