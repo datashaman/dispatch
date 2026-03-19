@@ -91,7 +91,7 @@ test('webhook show page hides diff section when no diff', function () {
     $this->actingAs($user);
 
     $webhookLog = WebhookLog::factory()->create();
-    AgentRun::factory()->create([
+    $run = AgentRun::factory()->create([
         'webhook_log_id' => $webhookLog->id,
         'rule_id' => 'test',
         'status' => 'success',
@@ -99,5 +99,6 @@ test('webhook show page hides diff section when no diff', function () {
     ]);
 
     Volt::test('pages::webhooks.show', ['webhookLog' => $webhookLog->id])
+        ->call('viewAgentRun', $run->id)
         ->assertDontSee('diff --git');
 });

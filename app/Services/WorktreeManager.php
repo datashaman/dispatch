@@ -88,7 +88,7 @@ class WorktreeManager
         $baseCommit = trim($mainHead->output());
 
         $result = Process::path($worktreePath)
-            ->run(['git', 'diff', $baseCommit.'...HEAD']);
+            ->run(['git', 'diff', '--no-color', $baseCommit.'...HEAD']);
 
         if (! $result->successful()) {
             return null;

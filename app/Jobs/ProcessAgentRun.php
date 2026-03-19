@@ -252,9 +252,7 @@ class ProcessAgentRun implements ShouldQueue
 
         $diff = $worktreeManager->getDiff($worktree['path'], $projectPath);
 
-        if ($diff) {
-            $this->agentRun->update(['diff' => $diff]);
-        }
+        $this->agentRun->update(['diff' => $diff]);
     }
 
     /**
