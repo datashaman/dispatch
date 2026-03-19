@@ -6,22 +6,18 @@ services:
     env_file: .env
     environment:
       - DB_CONNECTION=sqlite
-      - DB_DATABASE=/data/sqlite/database.sqlite
+      - DB_DATABASE=/app/database/database.sqlite
       - REDIS_HOST=redis
       - QUEUE_CONNECTION=redis
       - BROADCAST_CONNECTION=reverb
-      - APP_URL=http://localhost:${APP_PORT:-8000}
-      - REVERB_HOST=localhost
-      - REVERB_SCHEME=http
     volumes:
-      - sqlite-data:/data/sqlite
+      - sqlite-data:/app/database
       - app-storage:/app/storage
     depends_on:
       redis:
         condition: service_healthy
     command: >
-      sh -c "if [ -z \"$$APP_KEY\" ]; then php artisan key:generate --force; fi &&
-             php artisan migrate --force &&
+      sh -c "php artisan migrate --force &&
              php artisan serve --host=0.0.0.0 --port=8000"
 
   queue:
@@ -29,12 +25,11 @@ services:
     env_file: .env
     environment:
       - DB_CONNECTION=sqlite
-      - DB_DATABASE=/data/sqlite/database.sqlite
+      - DB_DATABASE=/app/database/database.sqlite
       - REDIS_HOST=redis
       - QUEUE_CONNECTION=redis
-      - APP_URL=http://localhost:${APP_PORT:-8000}
     volumes:
-      - sqlite-data:/data/sqlite
+      - sqlite-data:/app/database
       - app-storage:/app/storage
     depends_on:
       redis:
@@ -50,13 +45,12 @@ services:
     env_file: .env
     environment:
       - DB_CONNECTION=sqlite
-      - DB_DATABASE=/data/sqlite/database.sqlite
+      - DB_DATABASE=/app/database/database.sqlite
       - REDIS_HOST=redis
-      - REVERB_SERVER_HOST=0.0.0.0
-      - REVERB_HOST=localhost
+      - REVERB_HOST=0.0.0.0
       - REVERB_PORT=8080
     volumes:
-      - sqlite-data:/data/sqlite
+      - sqlite-data:/app/database
     depends_on:
       redis:
         condition: service_healthy
