@@ -104,6 +104,7 @@ class ProcessAgentRun implements ShouldQueue
             }
         } finally {
             if ($worktree) {
+                $this->captureDiff($worktree, $agentConfig);
                 $this->cleanupWorktree($worktree, $agentConfig);
             }
         }
@@ -236,6 +237,24 @@ class ProcessAgentRun implements ShouldQueue
         ]);
 
         return $worktree;
+    }
+
+    /**
+     * Capture the diff from a worktree and store it on the agent run.
+     *
+     * @param  array{path: string, branch: string}  $worktree
+     * @param  array<string, mixed>  $agentConfig
+     */
+    protected function captureDiff(array $worktree, array $agentConfig): void
+    {
+        $worktreeManager = app(WorktreeManager::class);
+        $projectPath = $this->project->path ?? $agentConfig['project_path'];
+
+        $diff = $worktreeManager->getDiff($worktree['path'], $projectPath);
+
+        if ($diff) {
+            $this->agentRun->update(['diff' => $diff]);
+        }
     }
 
     /**

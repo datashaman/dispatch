@@ -74,6 +74,32 @@ class WorktreeManager
     }
 
     /**
+     * Get the unified diff of all changes in a worktree relative to the main repo HEAD.
+     */
+    public function getDiff(string $worktreePath, string $projectPath): ?string
+    {
+        $mainHead = Process::path($projectPath)
+            ->run(['git', 'rev-parse', 'HEAD']);
+
+        if (! $mainHead->successful()) {
+            return null;
+        }
+
+        $baseCommit = trim($mainHead->output());
+
+        $result = Process::path($worktreePath)
+            ->run(['git', 'diff', $baseCommit.'...HEAD']);
+
+        if (! $result->successful()) {
+            return null;
+        }
+
+        $diff = trim($result->output());
+
+        return $diff !== '' ? $diff : null;
+    }
+
+    /**
      * Clean up a worktree after execution.
      * Removes it if no new commits were made, leaves it in place otherwise.
      *
