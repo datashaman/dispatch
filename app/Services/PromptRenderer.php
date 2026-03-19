@@ -62,11 +62,15 @@ class PromptRenderer
 
     /**
      * Wrap untrusted content in XML tags for structural separation.
+     *
+     * The value is XML-escaped to prevent content from breaking the
+     * structural boundary (e.g., via `</user-content>` or `<`, `&`).
      */
     protected function wrapUntrusted(string $field, string $value): string
     {
         $tag = str_replace('.', '-', $field);
+        $escaped = htmlspecialchars($value, ENT_XML1 | ENT_SUBSTITUTE, 'UTF-8');
 
-        return "<user-content field=\"{$tag}\">\n{$value}\n</user-content>";
+        return "<user-content field=\"{$tag}\">\n{$escaped}\n</user-content>";
     }
 }

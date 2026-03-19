@@ -17,19 +17,17 @@ class BashTool implements Tool
      * @var list<string>
      */
     protected array $blockedPatterns = [
-        '/\brm\s+(-[a-zA-Z]*r[a-zA-Z]*f|--recursive\b|--force\b).*\s+\/(?!\S)/', // rm -rf /
-        '/\brm\s+(-[a-zA-Z]*r[a-zA-Z]*f|--recursive\b|--force\b).*\s+~/', // rm -rf ~
-        '/\bmkfs\b/', // format filesystem
-        '/\bdd\b.*\bof=\/dev\//', // dd to device
-        '/\b:(){ :\|:& };:/', // fork bomb
-        '/\bcurl\b.*\|\s*(bash|sh|zsh)\b/', // curl pipe to shell
-        '/\bwget\b.*\|\s*(bash|sh|zsh)\b/', // wget pipe to shell
-        '/\bchmod\s+(-[a-zA-Z]*R|--recursive).*\s+\/(?!\S)/', // chmod -R /
-        '/\bchown\s+(-[a-zA-Z]*R|--recursive).*\s+\/(?!\S)/', // chown -R /
-        '/>\s*\/dev\/[sh]d[a-z]/', // write to disk device
-        '/\bshutdown\b/', // shutdown
-        '/\breboot\b/', // reboot
-        '/\binit\s+[06]\b/', // init 0 or init 6
+        '/\bmkfs\b/i', // format filesystem
+        '/\bdd\b.*\bof=\/dev\//i', // dd to device
+        '/:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/i', // fork bomb :(){ :|:& };:
+        '/\bcurl\b.*\|\s*(bash|sh|zsh)\b/i', // curl pipe to shell
+        '/\bwget\b.*\|\s*(bash|sh|zsh)\b/i', // wget pipe to shell
+        '/\bchmod\s+(-[a-zA-Z]*R|--recursive).*\s+\/(?!\S)/i', // chmod -R /
+        '/\bchown\s+(-[a-zA-Z]*R|--recursive).*\s+\/(?!\S)/i', // chown -R /
+        '/>\s*\/dev\/[sh]d[a-z]/i', // write to disk device
+        '/\bshutdown\b/i', // shutdown
+        '/\breboot\b/i', // reboot
+        '/\binit\s+[06]\b/i', // init 0 or init 6
     ];
 
     public function __construct(
@@ -82,6 +80,10 @@ class BashTool implements Tool
      */
     protected function checkBlockedCommand(string $command): ?string
     {
+        if ($this->isDestructiveRm($command)) {
+            return 'matches a blocked destructive pattern';
+        }
+
         foreach ($this->blockedPatterns as $pattern) {
             if (@preg_match($pattern, $command)) {
                 return 'matches a blocked destructive pattern';
@@ -89,5 +91,70 @@ class BashTool implements Tool
         }
 
         return null;
+    }
+
+    /**
+     * Detect dangerous rm commands that combine recursive + force flags
+     * targeting root (/) or home (~), regardless of flag order or grouping.
+     *
+     * Handles: rm -rf /, rm -fr /, rm -r -f /, rm --recursive --force /,
+     * rm -rf /*, rm -rf ~, and variants with additional arguments or chaining.
+     */
+    protected function isDestructiveRm(string $command): bool
+    {
+        // Split on command separators to check each subcommand
+        $subcommands = preg_split('/[;&|]+/', $command);
+
+        foreach ($subcommands as $subcommand) {
+            $subcommand = trim($subcommand);
+
+            // Tokenize the subcommand
+            $tokens = preg_split('/\s+/', $subcommand);
+
+            if (empty($tokens) || ! preg_match('/\brm$/i', $tokens[0])) {
+                continue;
+            }
+
+            $hasRecursive = false;
+            $hasForce = false;
+            $targets = [];
+
+            for ($i = 1; $i < count($tokens); $i++) {
+                $token = $tokens[$i];
+
+                if ($token === '--recursive') {
+                    $hasRecursive = true;
+                } elseif ($token === '--force') {
+                    $hasForce = true;
+                } elseif ($token === '--') {
+                    // Everything after -- is a target
+                    $targets = array_merge($targets, array_slice($tokens, $i + 1));
+
+                    break;
+                } elseif (str_starts_with($token, '-') && ! str_starts_with($token, '--')) {
+                    // Short flags like -rf, -r, -f, -fr, -rfi, etc.
+                    $flags = substr($token, 1);
+                    if (str_contains($flags, 'r') || str_contains($flags, 'R')) {
+                        $hasRecursive = true;
+                    }
+                    if (str_contains($flags, 'f')) {
+                        $hasForce = true;
+                    }
+                } else {
+                    $targets[] = $token;
+                }
+            }
+
+            if ($hasRecursive && $hasForce) {
+                foreach ($targets as $target) {
+                    // Matches /, /*, ~, or ~/*
+                    if (preg_match('#^/\*?$#', $target) || preg_match('#^~(/\*?)?$#', $target)) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
     }
 }
