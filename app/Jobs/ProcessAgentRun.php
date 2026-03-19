@@ -46,6 +46,20 @@ class ProcessAgentRun implements ShouldQueue
      */
     public function handle(): void
     {
+        // Check upstream dependencies and skip if any failed
+        if ($this->hasFailedUpstream()) {
+            $this->agentRun->update([
+                'status' => 'skipped',
+                'error' => 'Skipped: upstream dependency failed',
+            ]);
+            $this->broadcastUpdate();
+
+            return;
+        }
+
+        // Load upstream outputs into payload for dependent rules
+        $this->injectUpstreamOutputs();
+
         $attempt = $this->attempts();
         $this->agentRun->update([
             'status' => 'running',
@@ -176,6 +190,43 @@ class ProcessAgentRun implements ShouldQueue
         }
 
         return $memory->retrieveHistory($threadKey, $this->agentRun->id);
+    }
+
+    /**
+     * Check if any upstream dependency has failed.
+     */
+    protected function hasFailedUpstream(): bool
+    {
+        $upstreamRunIds = $this->agentRun->upstream_run_ids;
+        if (empty($upstreamRunIds)) {
+            return false;
+        }
+
+        return AgentRun::whereIn('id', array_values($upstreamRunIds))
+            ->whereIn('status', ['failed', 'skipped'])
+            ->exists();
+    }
+
+    /**
+     * Inject upstream outputs into the payload for dependent rules.
+     * Loads outputs from completed upstream AgentRuns at execution time.
+     */
+    protected function injectUpstreamOutputs(): void
+    {
+        $upstreamRunIds = $this->agentRun->upstream_run_ids;
+        if (empty($upstreamRunIds)) {
+            return;
+        }
+
+        $upstreamRuns = AgentRun::whereIn('id', array_values($upstreamRunIds))->get()->keyBy('id');
+        $outputs = [];
+
+        foreach ($upstreamRunIds as $ruleId => $runId) {
+            $run = $upstreamRuns->get($runId);
+            $outputs[$ruleId] = $run?->output;
+        }
+
+        $this->payload['upstream_outputs'] = $outputs;
     }
 
     /**
