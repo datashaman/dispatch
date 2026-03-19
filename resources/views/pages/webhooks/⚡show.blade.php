@@ -437,7 +437,7 @@ Alpine.data('agentRunStream', (runIds) => ({
         if (!window.Echo || !runIds.length) return;
 
         runIds.forEach(runId => {
-            const channel = window.Echo.channel(`agent-run.${runId}`);
+            const channel = window.Echo.private(`agent-run.${runId}`);
 
             channel.listen('.text_delta', (e) => {
                 this.getOrCreateStream(runId).text += e.delta ?? '';

@@ -3,8 +3,8 @@
 namespace App\Events;
 
 use App\Models\AgentRun;
-use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
+use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 
@@ -17,12 +17,12 @@ class AgentRunUpdated implements ShouldBroadcastNow
     ) {}
 
     /**
-     * @return list<Channel>
+     * @return list<PrivateChannel>
      */
     public function broadcastOn(): array
     {
         return [
-            new Channel('agent-run.'.$this->agentRun->id),
+            new PrivateChannel('agent-run.'.$this->agentRun->id),
         ];
     }
 
