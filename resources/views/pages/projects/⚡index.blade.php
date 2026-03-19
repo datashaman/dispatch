@@ -1,10 +1,13 @@
 <?php
 
+use App\Models\GitHubInstallation;
 use App\Models\Project;
 use App\Services\ConfigSyncer;
 use App\Services\DefaultRulesService;
+use App\Services\GitHubAppService;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
+use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
@@ -26,6 +29,17 @@ new #[Title('Projects')] class extends Component {
     public string $statusMessage = '';
     public string $errorMessage = '';
 
+    // Repo picker state
+    public bool $showRepoPicker = false;
+    public int $repoPickerPage = 1;
+    public int $repoPickerTotalCount = 0;
+    public string $repoPickerSearch = '';
+    public ?int $repoPickerInstallationId = null;
+    public bool $showRegisterModal = false;
+    public string $registerRepo = '';
+    public string $registerPath = '';
+    public ?int $registerInstallationDbId = null;
+
     public function updatedNewPath(): void
     {
         if (! File::isDirectory($this->newPath)) {
@@ -36,7 +50,6 @@ new #[Title('Projects')] class extends Component {
 
         if ($result->successful()) {
             $url = trim($result->output());
-            // Extract owner/repo from SSH or HTTPS URLs
             if (preg_match('#[:/]([^/]+/[^/]+?)(?:\.git)?$#', $url, $matches)) {
                 $this->newRepo = $matches[1];
             }
@@ -62,6 +75,158 @@ new #[Title('Projects')] class extends Component {
         $models = $this->getModelsForProvider($this->editAgentProvider);
         if (! array_key_exists($this->editAgentModel ?? '', $models)) {
             $this->editAgentModel = $models ? array_key_first($models) : null;
+        }
+    }
+
+    #[Computed]
+    public function isGitHubAppConfigured(): bool
+    {
+        return app(GitHubAppService::class)->isConfigured();
+    }
+
+    #[Computed]
+    public function installations(): \Illuminate\Database\Eloquent\Collection
+    {
+        return GitHubInstallation::orderBy('account_login')->get();
+    }
+
+    #[Computed]
+    public function registeredRepos(): array
+    {
+        return Project::pluck('repo')->toArray();
+    }
+
+    #[Computed]
+    public function pickerRepos(): array
+    {
+        if (! $this->showRepoPicker || ! $this->repoPickerInstallationId) {
+            return [];
+        }
+
+        try {
+            $result = app(GitHubAppService::class)->listRepositories(
+                $this->repoPickerInstallationId,
+                $this->repoPickerPage,
+                20,
+            );
+
+            $this->repoPickerTotalCount = $result['total_count'] ?? 0;
+            $repos = $result['repositories'] ?? [];
+
+            if ($this->repoPickerSearch) {
+                $search = strtolower($this->repoPickerSearch);
+                $repos = array_values(array_filter($repos, fn ($r) => str_contains(strtolower($r['full_name']), $search)));
+            }
+
+            return $repos;
+        } catch (\Throwable $e) {
+            $this->errorMessage = "Failed to load repositories: {$e->getMessage()}";
+
+            return [];
+        }
+    }
+
+    #[Computed]
+    public function pickerTotalPages(): int
+    {
+        return max(1, (int) ceil($this->repoPickerTotalCount / 20));
+    }
+
+    public function openRepoPicker(?int $installationId = null): void
+    {
+        $installations = $this->installations;
+
+        if ($installations->isEmpty()) {
+            $this->errorMessage = 'No GitHub App installations found. Configure your GitHub App in Settings first.';
+
+            return;
+        }
+
+        $this->repoPickerInstallationId = $installationId ?? $installations->first()->installation_id;
+        $this->repoPickerPage = 1;
+        $this->repoPickerSearch = '';
+        $this->showRepoPicker = true;
+        unset($this->pickerRepos);
+    }
+
+    public function closeRepoPicker(): void
+    {
+        $this->showRepoPicker = false;
+    }
+
+    public function switchInstallation(int $installationId): void
+    {
+        $this->repoPickerInstallationId = $installationId;
+        $this->repoPickerPage = 1;
+        unset($this->pickerRepos);
+    }
+
+    public function pickerPreviousPage(): void
+    {
+        if ($this->repoPickerPage > 1) {
+            $this->repoPickerPage--;
+            unset($this->pickerRepos);
+        }
+    }
+
+    public function pickerNextPage(): void
+    {
+        if ($this->repoPickerPage < $this->pickerTotalPages) {
+            $this->repoPickerPage++;
+            unset($this->pickerRepos);
+        }
+    }
+
+    public function updatedRepoPickerSearch(): void
+    {
+        $this->repoPickerPage = 1;
+        unset($this->pickerRepos);
+    }
+
+    public function startRegister(string $fullName, int $installationDbId): void
+    {
+        $this->registerRepo = $fullName;
+        $this->registerPath = '';
+        $this->registerInstallationDbId = $installationDbId;
+        $this->showRegisterModal = true;
+    }
+
+    public function registerProject(): void
+    {
+        $this->validate([
+            'registerRepo' => ['required', 'string', 'unique:projects,repo'],
+            'registerPath' => ['required', 'string'],
+        ], [
+            'registerRepo.unique' => 'This repository is already registered.',
+        ]);
+
+        if (! File::isDirectory($this->registerPath)) {
+            $this->addError('registerPath', 'The path does not exist on disk.');
+
+            return;
+        }
+
+        $project = Project::create([
+            'repo' => $this->registerRepo,
+            'path' => $this->registerPath,
+            'github_installation_id' => $this->registerInstallationDbId,
+        ]);
+
+        app(DefaultRulesService::class)->seed($project);
+
+        $this->reset('showRegisterModal', 'registerRepo', 'registerPath', 'registerInstallationDbId');
+        unset($this->registeredRepos, $this->pickerRepos);
+        $this->statusMessage = "Project registered: {$project->repo}";
+    }
+
+    public function unregisterRepo(string $repo): void
+    {
+        $project = Project::where('repo', $repo)->first();
+
+        if ($project) {
+            $project->delete();
+            unset($this->registeredRepos, $this->pickerRepos);
+            $this->statusMessage = "Project removed: {$repo}";
         }
     }
 
@@ -141,6 +306,7 @@ new #[Title('Projects')] class extends Component {
     {
         Project::findOrFail($id)->delete();
         $this->confirmingDelete = null;
+        unset($this->registeredRepos);
         $this->dispatch('project-removed');
     }
 
@@ -166,9 +332,16 @@ new #[Title('Projects')] class extends Component {
             <flux:heading size="xl">{{ __('Projects') }}</flux:heading>
             <flux:text class="mt-1">{{ __('Manage registered repositories and their local paths.') }}</flux:text>
         </div>
-        <flux:button variant="primary" icon="plus" wire:click="$set('showAddForm', true)">
-            {{ __('Add Project') }}
-        </flux:button>
+        <div class="flex items-center gap-2">
+            @if ($this->isGitHubAppConfigured && $this->installations->isNotEmpty())
+                <flux:button variant="ghost" icon="cloud" wire:click="openRepoPicker">
+                    {{ __('Connect Repos') }}
+                </flux:button>
+            @endif
+            <flux:button variant="primary" icon="plus" wire:click="$set('showAddForm', true)">
+                {{ __('Add Project') }}
+            </flux:button>
+        </div>
     </div>
 
     @if ($statusMessage)
@@ -182,6 +355,114 @@ new #[Title('Projects')] class extends Component {
             {{ $errorMessage }}
         </flux:callout>
     @endif
+
+    {{-- Repo Picker Panel --}}
+    @if ($showRepoPicker)
+        <div class="mb-6 rounded-xl border border-zinc-200 dark:border-zinc-700 p-4 space-y-4">
+            <div class="flex items-center justify-between">
+                <flux:heading size="sm">{{ __('Your Repositories') }}</flux:heading>
+                <flux:button variant="ghost" size="sm" icon="x-mark" wire:click="closeRepoPicker" />
+            </div>
+
+            {{-- Installation selector (if multiple) --}}
+            @if ($this->installations->count() > 1)
+                <div class="flex items-center gap-2">
+                    @foreach ($this->installations as $inst)
+                        <flux:button
+                            variant="{{ $repoPickerInstallationId === $inst->installation_id ? 'primary' : 'ghost' }}"
+                            size="sm"
+                            wire:click="switchInstallation({{ $inst->installation_id }})"
+                        >
+                            {{ $inst->account_login }}
+                        </flux:button>
+                    @endforeach
+                </div>
+            @endif
+
+            {{-- Search --}}
+            <flux:input wire:model.live.debounce.300ms="repoPickerSearch" placeholder="Search repositories..." icon="magnifying-glass" size="sm" />
+
+            {{-- Repo list --}}
+            <div class="space-y-1" wire:loading.class="opacity-50">
+                @forelse ($this->pickerRepos as $repo)
+                    @php $isRegistered = in_array($repo['full_name'], $this->registeredRepos, true); @endphp
+                    <div class="flex items-center justify-between gap-3 rounded-lg px-3 py-2 hover:bg-zinc-50 dark:hover:bg-zinc-800/50" wire:key="picker-{{ $repo['id'] }}">
+                        <div class="min-w-0 flex-1">
+                            <div class="flex items-center gap-2">
+                                <span class="text-sm font-medium truncate">{{ $repo['full_name'] }}</span>
+                                @if ($repo['private'])
+                                    <flux:badge color="amber" size="sm">{{ __('Private') }}</flux:badge>
+                                @endif
+                            </div>
+                            @if ($repo['description'])
+                                <p class="text-xs text-zinc-500 dark:text-zinc-400 truncate mt-0.5">{{ $repo['description'] }}</p>
+                            @endif
+                        </div>
+                        <div>
+                            @if ($isRegistered)
+                                <flux:button variant="ghost" size="sm" wire:click="unregisterRepo('{{ $repo['full_name'] }}')" wire:confirm="Remove {{ $repo['full_name'] }} from projects?">
+                                    <flux:badge color="green" size="sm">{{ __('Connected') }}</flux:badge>
+                                </flux:button>
+                            @else
+                                @php
+                                    $installation = $this->installations->firstWhere('installation_id', $repoPickerInstallationId);
+                                @endphp
+                                <flux:button variant="ghost" size="sm" wire:click="startRegister('{{ $repo['full_name'] }}', {{ $installation?->id }})">
+                                    <flux:badge color="zinc" size="sm">{{ __('Connect') }}</flux:badge>
+                                </flux:button>
+                            @endif
+                        </div>
+                    </div>
+                @empty
+                    @if ($repoPickerSearch)
+                        <flux:text class="text-center py-4 text-zinc-500">{{ __('No repositories match your search.') }}</flux:text>
+                    @else
+                        <flux:text class="text-center py-4 text-zinc-500">{{ __('No repositories found for this installation.') }}</flux:text>
+                    @endif
+                @endforelse
+            </div>
+
+            {{-- Pagination --}}
+            @if ($this->pickerTotalPages > 1)
+                <div class="flex items-center justify-between pt-1">
+                    <flux:text class="text-xs text-zinc-500">
+                        {{ __('Page :current of :total (:count repos)', ['current' => $repoPickerPage, 'total' => $this->pickerTotalPages, 'count' => $repoPickerTotalCount]) }}
+                    </flux:text>
+                    <div class="flex gap-1">
+                        <flux:button variant="ghost" size="sm" wire:click="pickerPreviousPage" :disabled="$repoPickerPage <= 1">
+                            {{ __('Prev') }}
+                        </flux:button>
+                        <flux:button variant="ghost" size="sm" wire:click="pickerNextPage" :disabled="$repoPickerPage >= $this->pickerTotalPages">
+                            {{ __('Next') }}
+                        </flux:button>
+                    </div>
+                </div>
+            @endif
+        </div>
+    @endif
+
+    {{-- Register Modal (for repo picker) --}}
+    <flux:modal wire:model="showRegisterModal">
+        <form wire:submit="registerProject">
+            <flux:heading size="lg">{{ __('Connect Repository') }}</flux:heading>
+            <flux:text class="mt-1 font-mono text-sm">{{ $registerRepo }}</flux:text>
+
+            <div class="mt-6 space-y-4">
+                <flux:field>
+                    <flux:label>{{ __('Local Path') }}</flux:label>
+                    <flux:input wire:model="registerPath" placeholder="/path/to/local/clone" required />
+                    <flux:description>{{ __('The absolute path to the local clone of this repository.') }}</flux:description>
+                    <flux:error name="registerPath" />
+                    <flux:error name="registerRepo" />
+                </flux:field>
+            </div>
+
+            <div class="mt-6 flex justify-end gap-2">
+                <flux:button variant="ghost" wire:click="$set('showRegisterModal', false)">{{ __('Cancel') }}</flux:button>
+                <flux:button variant="primary" type="submit">{{ __('Connect') }}</flux:button>
+            </div>
+        </form>
+    </flux:modal>
 
     {{-- Add Project Form --}}
     <flux:modal wire:model="showAddForm">
@@ -299,6 +580,15 @@ new #[Title('Projects')] class extends Component {
             <flux:icon name="folder" class="mx-auto h-12 w-12 text-zinc-400" />
             <flux:heading size="lg" class="mt-4">{{ __('No projects registered') }}</flux:heading>
             <flux:text class="mt-2">{{ __('Add a project to get started with webhook dispatch.') }}</flux:text>
+            @if ($this->isGitHubAppConfigured && $this->installations->isNotEmpty())
+                <flux:button variant="primary" class="mt-4" icon="cloud" wire:click="openRepoPicker">
+                    {{ __('Connect GitHub Repos') }}
+                </flux:button>
+            @elseif (! $this->isGitHubAppConfigured)
+                <flux:button variant="ghost" class="mt-4" icon="cog-6-tooth" :href="route('github.settings')" wire:navigate>
+                    {{ __('Set up GitHub App') }}
+                </flux:button>
+            @endif
         </div>
     @else
         <div class="space-y-3">
