@@ -7,6 +7,6 @@ Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
 });
 
 // Agent run streaming — private channel, only authenticated users can listen
-Broadcast::channel('agent-run.{id}', function ($user) {
+Broadcast::channel('agent-run.{id}', function ($user, $id) {
     return $user !== null;
 });

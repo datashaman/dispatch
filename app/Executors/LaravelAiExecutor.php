@@ -7,7 +7,7 @@ use App\Contracts\Executor;
 use App\DataTransferObjects\ExecutionResult;
 use App\Models\AgentRun;
 use App\Services\ToolRegistry;
-use Illuminate\Broadcasting\Channel;
+use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
@@ -59,7 +59,7 @@ class LaravelAiExecutor implements Executor
                 'agent_run_id' => $run->id,
             ]);
 
-            $channel = new Channel('agent-run.'.$run->id);
+            $channel = new PrivateChannel('agent-run.'.$run->id);
 
             // stream() + each() iterates synchronously — events are broadcast
             // inline, and the response is fully consumed before we continue.
