@@ -6,12 +6,12 @@ This guide covers installing Dispatch, configuring it, connecting a GitHub App, 
 
 | Requirement | Notes |
 |-------------|-------|
-| PHP 8.2+ | With `sqlite3`, `pdo_sqlite`, `redis`, `pcntl` extensions |
+| PHP 8.5+ | With `sqlite3`, `pdo_sqlite`, `redis`, `pcntl` extensions |
 | Composer | Latest stable |
 | Node.js 20+ | For front-end assets |
 | Redis | For queuing agent jobs |
 | Git | Required for worktree isolation |
-| `gh` CLI | [Install](https://cli.github.com/) and authenticate with `gh auth login` |
+| Docker (optional) | For containerized deployment via Docker Compose |
 
 ## Installation
 
@@ -187,7 +187,7 @@ If you are not using a GitHub App, add a webhook directly to the repository or o
 
 ## Prompt Variables
 
-Prompts are rendered with [Blade-style dot notation](https://laravel.com/docs/blade) over the full GitHub webhook payload:
+Prompts are rendered with [Blade-style dot notation](https://laravel.com/docs/blade) over the normalized webhook payload. Non-GitHub sources (e.g. GitLab) have their payloads normalized to a GitHub-compatible structure:
 
 | Variable | Example value |
 |----------|---------------|
@@ -200,4 +200,4 @@ Prompts are rendered with [Blade-style dot notation](https://laravel.com/docs/bl
 | `{{ event.label.name }}` | `dispatch` |
 | `{{ event.sender.login }}` | `datashaman` |
 
-The full payload structure mirrors the [GitHub Webhooks documentation](https://docs.github.com/en/webhooks/webhook-events-and-payloads).
+For GitHub sources, the payload structure mirrors the [GitHub Webhooks documentation](https://docs.github.com/en/webhooks/webhook-events-and-payloads). For other sources, payloads are normalized to this same structure by the source's `EventSource` adapter.
