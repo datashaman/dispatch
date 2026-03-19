@@ -68,6 +68,49 @@ it('verifies webhook token', function () {
         ->and($source->verifyToken($invalidRequest))->toBeFalse();
 });
 
+it('rejects missing token when secret is configured', function () {
+    $source = new GitLabEventSource;
+
+    config(['services.gitlab.webhook_secret' => 'my-secret-token']);
+
+    $request = Request::create('/webhook', 'POST');
+    $request->headers->set('X-Gitlab-Event', 'Issue Hook');
+
+    expect($source->verifyToken($request))->toBeFalse()
+        ->and($source->verifyWebhook($request))->toBeFalse();
+});
+
+it('verifyWebhook delegates to verifyToken', function () {
+    $source = new GitLabEventSource;
+
+    config(['services.gitlab.webhook_secret' => 'my-secret-token']);
+
+    $validRequest = Request::create('/webhook', 'POST');
+    $validRequest->headers->set('X-Gitlab-Event', 'Issue Hook');
+    $validRequest->headers->set('X-Gitlab-Token', 'my-secret-token');
+
+    $invalidRequest = Request::create('/webhook', 'POST');
+    $invalidRequest->headers->set('X-Gitlab-Event', 'Issue Hook');
+    $invalidRequest->headers->set('X-Gitlab-Token', 'wrong');
+
+    expect($source->verifyWebhook($validRequest))->toBeTrue()
+        ->and($source->verifyWebhook($invalidRequest))->toBeFalse();
+});
+
+it('returns appropriate verification error messages', function () {
+    $source = new GitLabEventSource;
+
+    $noTokenRequest = Request::create('/webhook', 'POST');
+    $noTokenRequest->headers->set('X-Gitlab-Event', 'Issue Hook');
+
+    $badTokenRequest = Request::create('/webhook', 'POST');
+    $badTokenRequest->headers->set('X-Gitlab-Event', 'Issue Hook');
+    $badTokenRequest->headers->set('X-Gitlab-Token', 'wrong');
+
+    expect($source->verificationError($noTokenRequest))->toBe('Missing X-Gitlab-Token header')
+        ->and($source->verificationError($badTokenRequest))->toBe('Invalid webhook token');
+});
+
 it('passes verification when no secret configured', function () {
     $source = new GitLabEventSource;
 

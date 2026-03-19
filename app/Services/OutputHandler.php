@@ -18,8 +18,10 @@ class OutputHandler
      *
      * @param  array<string, mixed>  $payload
      */
-    public function handle(AgentRun $agentRun, OutputConfig $outputConfig, array $payload, string $source = 'github'): void
+    public function handle(AgentRun $agentRun, OutputConfig $outputConfig, array $payload, ?string $source = null): void
     {
+        $source = $source ?? $this->resolveSource($agentRun);
+
         if ($outputConfig->githubComment) {
             $this->postComment($agentRun, $payload, $source);
         }
@@ -46,8 +48,10 @@ class OutputHandler
      *
      * @param  array<string, mixed>  $payload
      */
-    public function addReaction(string $reaction, array $payload, string $source = 'github'): void
+    public function addReaction(string $reaction, array $payload, ?string $source = null): void
     {
+        $source = $source ?? 'github';
+
         try {
             $adapter = $this->registry->output($source);
             $adapter->addReaction($reaction, $payload);
@@ -55,6 +59,14 @@ class OutputHandler
             // Fall back to legacy GitHub behavior for backwards compatibility
             $this->addReactionLegacy($reaction, $payload);
         }
+    }
+
+    /**
+     * Resolve the source from the agent run's webhook log, defaulting to 'github'.
+     */
+    protected function resolveSource(AgentRun $agentRun): string
+    {
+        return $agentRun->webhookLog?->source ?? 'github';
     }
 
     /**

@@ -48,6 +48,22 @@ class GitLabEventSource implements EventSource
         };
     }
 
+    public function verifyWebhook(Request $request): bool
+    {
+        return $this->verifyToken($request);
+    }
+
+    public function verificationError(Request $request): string
+    {
+        $token = $request->header('X-Gitlab-Token');
+
+        if (! $token) {
+            return 'Missing X-Gitlab-Token header';
+        }
+
+        return 'Invalid webhook token';
+    }
+
     public function name(): string
     {
         return 'gitlab';
@@ -66,7 +82,11 @@ class GitLabEventSource implements EventSource
 
         $token = $request->header('X-Gitlab-Token');
 
-        return $token === $secret;
+        if (! $token) {
+            return false;
+        }
+
+        return hash_equals($secret, $token);
     }
 
     /**

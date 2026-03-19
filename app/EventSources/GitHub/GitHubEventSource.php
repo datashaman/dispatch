@@ -35,6 +35,20 @@ class GitHubEventSource implements EventSource
         return $request->all();
     }
 
+    public function verifyWebhook(Request $request): bool
+    {
+        return $this->verifySignature($request);
+    }
+
+    public function verificationError(Request $request): string
+    {
+        $error = $this->signatureError($request);
+
+        return $error === 'Invalid signature'
+            ? 'Invalid webhook signature'
+            : 'Missing X-Hub-Signature-256 header or webhook secret not configured';
+    }
+
     public function name(): string
     {
         return 'github';

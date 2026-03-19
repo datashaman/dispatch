@@ -80,6 +80,26 @@ it('rejects invalid webhook signature', function () {
     expect($source->verifySignature($request))->toBeFalse();
 });
 
+it('verifyWebhook delegates to verifySignature', function () {
+    $source = new GitHubEventSource;
+
+    config([
+        'services.github.verify_webhook_signature' => true,
+        'services.github.webhook_secret' => 'test-secret',
+    ]);
+
+    $payload = json_encode(['action' => 'opened']);
+    $signature = 'sha256='.hash_hmac('sha256', $payload, 'test-secret');
+
+    $request = Request::create('/webhook', 'POST', [], [], [], [
+        'CONTENT_TYPE' => 'application/json',
+    ], $payload);
+    $request->headers->set('X-GitHub-Event', 'issues');
+    $request->headers->set('X-Hub-Signature-256', $signature);
+
+    expect($source->verifyWebhook($request))->toBeTrue();
+});
+
 it('skips signature verification when disabled', function () {
     $source = new GitHubEventSource;
 

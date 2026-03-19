@@ -29,6 +29,17 @@ interface EventSource
     public function normalizePayload(Request $request): array;
 
     /**
+     * Verify the webhook request is authentic (signature, token, etc.).
+     * Returns true if verification passes or is not configured.
+     */
+    public function verifyWebhook(Request $request): bool;
+
+    /**
+     * Get a human-readable error message when webhook verification fails.
+     */
+    public function verificationError(Request $request): string;
+
+    /**
      * Get the source name identifier (e.g., "github", "gitlab").
      */
     public function name(): string;

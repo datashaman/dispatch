@@ -31,30 +31,27 @@ class WebhookController extends Controller
         if (! $sourceName) {
             return response()->json([
                 'ok' => false,
-                'error' => 'Missing X-GitHub-Event header',
+                'error' => 'Unable to detect webhook source',
             ], 400);
         }
 
         $source = $this->registry->source($sourceName);
 
-        // Source-specific validation (signature, auth, etc.)
+        // Verify webhook authenticity (signature, token, etc.)
+        if (! $source->verifyWebhook($request)) {
+            $eventType = $source->eventType($request) ?? 'unknown';
+            $error = $source->verificationError($request);
+
+            $this->logWebhook($eventType, $request, 'error', $error, $sourceName);
+
+            return response()->json([
+                'ok' => false,
+                'error' => $error,
+            ], 401);
+        }
+
+        // Source-specific pre-processing (self-loop, ping, etc.)
         if ($source instanceof GitHubEventSource) {
-            if ($source->shouldVerifySignature() && ! $source->verifySignature($request)) {
-                $error = $source->signatureError($request);
-                $eventType = $source->eventType($request) ?? 'unknown';
-
-                $this->logWebhook($eventType, $request, 'error', $error, $sourceName);
-
-                $errorMessage = $error === 'Invalid signature'
-                    ? 'Invalid webhook signature'
-                    : 'Missing X-Hub-Signature-256 header or webhook secret not configured';
-
-                return response()->json([
-                    'ok' => false,
-                    'error' => $errorMessage,
-                ], 401);
-            }
-
             if ($source->isSelfLoop($request)) {
                 $eventType = $source->eventType($request) ?? 'unknown';
                 $this->logWebhook($eventType, $request, 'received', 'Self-loop detected', $sourceName);
@@ -76,7 +73,7 @@ class WebhookController extends Controller
             }
         }
 
-        $eventType = $source->eventType($request);
+        $eventType = $source->eventType($request) ?? 'unknown';
 
         $webhookLog = $this->logWebhook($eventType, $request, 'received', null, $sourceName);
 
