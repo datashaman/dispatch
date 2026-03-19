@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\FeedbackRating;
 use Database\Factories\AgentRunFeedbackFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -20,6 +21,13 @@ class AgentRunFeedback extends Model
         'rating',
         'comment',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'rating' => FeedbackRating::class,
+        ];
+    }
 
     /**
      * @return BelongsTo<AgentRun, $this>
