@@ -2,8 +2,10 @@
 
 use App\DataTransferObjects\DispatchConfig;
 use App\DataTransferObjects\RuleConfig;
+use App\Exceptions\ConfigLoadException;
 use App\Exceptions\PipelineException;
 use App\Jobs\ProcessAgentRun;
+use App\Models\AgentRun;
 use App\Models\Project;
 use App\Models\WebhookLog;
 use App\Services\AgentDispatcher;
@@ -85,6 +87,17 @@ test('orchestrator handles independent rules in pipeline', function () {
     expect($ids)->toContain('b');
 });
 
+test('orchestrator throws on duplicate rule IDs', function () {
+    $orchestrator = new PipelineOrchestrator;
+
+    $rules = collect([
+        new RuleConfig(id: 'a', event: 'issues.opened', prompt: 'test'),
+        new RuleConfig(id: 'a', event: 'issues.opened', prompt: 'test duplicate'),
+    ]);
+
+    $orchestrator->resolve($rules);
+})->throws(PipelineException::class, 'Duplicate rule IDs');
+
 // --- ConfigLoader depends_on parsing ---
 
 test('config loader parses depends_on field', function () {
@@ -132,10 +145,42 @@ test('config loader handles single string depends_on', function () {
     rmdir($projectPath);
 });
 
+test('config loader validates depends_on elements are strings', function () {
+    $projectPath = sys_get_temp_dir().'/dispatch-pipeline-test-'.uniqid();
+    mkdir($projectPath, 0755, true);
+
+    // Write raw YAML with a nested mapping as a depends_on entry
+    $yaml = <<<'YAML'
+version: 1
+agent:
+  name: test
+  executor: laravel-ai
+rules:
+  - id: a
+    event: issues.opened
+    prompt: First.
+  - id: b
+    event: issues.opened
+    prompt: Second.
+    depends_on:
+      - nested_key: value
+YAML;
+
+    file_put_contents($projectPath.'/dispatch.yml', $yaml);
+
+    $loader = app(ConfigLoader::class);
+
+    expect(fn () => $loader->loadFromDisk($projectPath))
+        ->toThrow(ConfigLoadException::class, 'must be a string');
+
+    unlink($projectPath.'/dispatch.yml');
+    rmdir($projectPath);
+});
+
 // --- AgentDispatcher pipeline integration ---
 
-test('dispatcher dispatches pipeline rules in dependency order', function () {
-    Bus::fake([ProcessAgentRun::class]);
+test('dispatcher dispatches pipeline rules in dependency order via chain', function () {
+    Bus::fake();
 
     $webhookLog = WebhookLog::factory()->create();
     $project = Project::factory()->create();
@@ -160,13 +205,39 @@ test('dispatcher dispatches pipeline rules in dependency order', function () {
     expect($results[1]['rule'])->toBe('step2');
     expect($results[1]['pipeline'])->toBeTrue();
 
-    Bus::assertDispatched(ProcessAgentRun::class, 2);
+    // Verify chain was dispatched (not individual dispatches)
+    Bus::assertChained([
+        ProcessAgentRun::class,
+        ProcessAgentRun::class,
+    ]);
+
+    // Verify the step2 AgentRun has upstream_run_ids pointing to step1's run
+    $step1Run = AgentRun::where('rule_id', 'step1')->first();
+    $step2Run = AgentRun::where('rule_id', 'step2')->first();
+
+    expect($step2Run->upstream_run_ids)->toBe(['step1' => $step1Run->id]);
+    expect($step1Run->upstream_run_ids)->toBeNull();
 });
 
-test('dispatcher skips dependent rule when upstream fails in sync mode', function () {
-    Bus::fake([ProcessAgentRun::class]);
-
+test('dependent job loads upstream outputs at execution time', function () {
     $webhookLog = WebhookLog::factory()->create();
+
+    // Create a completed upstream run with output
+    $upstreamRun = AgentRun::factory()->completed()->create([
+        'webhook_log_id' => $webhookLog->id,
+        'rule_id' => 'step1',
+        'output' => 'Analysis result from step1',
+    ]);
+
+    // Create the dependent run with upstream_run_ids
+    $dependentRun = AgentRun::factory()->create([
+        'webhook_log_id' => $webhookLog->id,
+        'rule_id' => 'step2',
+        'upstream_run_ids' => ['step1' => $upstreamRun->id],
+        'status' => 'queued',
+    ]);
+
+    $rule = new RuleConfig(id: 'step2', event: 'issues.opened', prompt: 'Step 2', dependsOn: ['step1']);
     $project = Project::factory()->create();
     $config = new DispatchConfig(
         version: 1,
@@ -175,21 +246,50 @@ test('dispatcher skips dependent rule when upstream fails in sync mode', functio
         rules: [],
     );
 
-    $rules = collect([
-        new RuleConfig(id: 'step1', event: 'issues.opened', prompt: 'Step 1'),
-        new RuleConfig(id: 'step2', event: 'issues.opened', prompt: 'Step 2', dependsOn: ['step1']),
+    $payload = ['test' => true];
+
+    $job = new ProcessAgentRun($dependentRun, $rule, $payload, $project, $config);
+
+    // Use reflection to call the protected injectUpstreamOutputs method
+    $reflection = new ReflectionMethod($job, 'injectUpstreamOutputs');
+    $reflection->invoke($job);
+
+    expect($job->payload['upstream_outputs'])->toBe([
+        'step1' => 'Analysis result from step1',
+    ]);
+});
+
+test('dependent job skips when upstream has failed', function () {
+    $webhookLog = WebhookLog::factory()->create();
+
+    // Create a failed upstream run
+    $upstreamRun = AgentRun::factory()->failed()->create([
+        'webhook_log_id' => $webhookLog->id,
+        'rule_id' => 'step1',
     ]);
 
-    $dispatcher = app(AgentDispatcher::class);
-    $results = $dispatcher->dispatch($webhookLog, $rules, ['test' => true], $project, $config);
+    // Create the dependent run with upstream_run_ids
+    $dependentRun = AgentRun::factory()->create([
+        'webhook_log_id' => $webhookLog->id,
+        'rule_id' => 'step2',
+        'upstream_run_ids' => ['step1' => $upstreamRun->id],
+        'status' => 'queued',
+    ]);
 
-    // Both queued — step2 depends on step1 but with Bus::fake, sync mode
-    // doesn't actually run, so the run status stays 'queued' not 'failed'
-    expect($results)->toHaveCount(2);
-    expect($results[0]['rule'])->toBe('step1');
-    expect($results[1]['rule'])->toBe('step2');
+    $rule = new RuleConfig(id: 'step2', event: 'issues.opened', prompt: 'Step 2', dependsOn: ['step1']);
+    $project = Project::factory()->create();
+    $config = new DispatchConfig(
+        version: 1,
+        agentName: 'test',
+        agentExecutor: 'laravel-ai',
+        rules: [],
+    );
 
-    Bus::assertDispatched(ProcessAgentRun::class, 2);
+    $job = new ProcessAgentRun($dependentRun, $rule, ['test' => true], $project, $config);
+
+    // Use reflection to check hasFailedUpstream
+    $reflection = new ReflectionMethod($job, 'hasFailedUpstream');
+    expect($reflection->invoke($job))->toBeTrue();
 });
 
 test('dispatcher handles circular dependency gracefully', function () {

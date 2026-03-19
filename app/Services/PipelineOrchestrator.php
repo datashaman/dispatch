@@ -29,6 +29,14 @@ class PipelineOrchestrator
      */
     public function resolve(Collection $rules): Collection
     {
+        // Detect duplicate rule IDs before building the map
+        $ids = $rules->pluck('id');
+        $duplicates = $ids->duplicates();
+        if ($duplicates->isNotEmpty()) {
+            $dupeList = $duplicates->unique()->implode(', ');
+            throw new PipelineException("Duplicate rule IDs detected: {$dupeList}");
+        }
+
         $ruleMap = $rules->keyBy('id');
         $sorted = [];
         $visited = [];

@@ -10,6 +10,7 @@ use App\Models\AgentRun;
 use App\Models\Project;
 use App\Models\WebhookLog;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Log;
 
 class AgentDispatcher
@@ -95,8 +96,9 @@ class AgentDispatcher
 
     /**
      * Dispatch rules as a pipeline with dependency resolution.
-     * Rules are topologically sorted and upstream outputs are injected
-     * into the payload for dependent rules.
+     * Rules are topologically sorted, AgentRun records are created upfront
+     * with upstream_run_ids so dependent jobs can load outputs at execution time,
+     * and jobs are dispatched via Bus::chain() to enforce execution order.
      *
      * @param  Collection<int, RuleConfig>  $matchedRules
      * @param  array<string, mixed>  $payload
@@ -122,44 +124,28 @@ class AgentDispatcher
             })->all();
         }
 
+        // Create all AgentRun records upfront so we can wire upstream_run_ids
+        /** @var array<string, AgentRun> $agentRuns rule_id => AgentRun */
+        $agentRuns = [];
         $results = [];
-        /** @var array<string, string> $upstreamOutputs rule_id => output */
-        $upstreamOutputs = [];
-        $failedRules = [];
 
         foreach ($sortedRules as $rule) {
-            // Check if any dependency failed
-            $failedDep = $this->findFailedDependency($rule, $failedRules);
-            if ($failedDep && ! $rule->continueOnError) {
-                $agentRun = $this->createSkippedRun($webhookLog, $rule, "Skipped: upstream rule '{$failedDep}' failed");
-
-                $results[] = [
-                    'rule' => $rule->id,
-                    'name' => $rule->name,
-                    'status' => 'skipped',
-                    'reason' => 'dependency_failed',
-                    'agent_run_id' => $agentRun->id,
-                ];
-
-                $failedRules[$rule->id] = true;
-
-                continue;
-            }
-
-            // Enrich payload with upstream outputs for dependent rules
-            $enrichedPayload = $payload;
-            if (! empty($rule->dependsOn)) {
-                $enrichedPayload['upstream_outputs'] = $this->collectUpstreamOutputs($rule, $upstreamOutputs);
+            $upstreamRunIds = [];
+            foreach ($rule->dependsOn as $depId) {
+                if (isset($agentRuns[$depId])) {
+                    $upstreamRunIds[$depId] = $agentRuns[$depId]->id;
+                }
             }
 
             $agentRun = AgentRun::create([
                 'webhook_log_id' => $webhookLog->id,
                 'rule_id' => $rule->id,
+                'upstream_run_ids' => ! empty($upstreamRunIds) ? $upstreamRunIds : null,
                 'status' => 'queued',
                 'created_at' => now(),
             ]);
 
-            ProcessAgentRun::dispatch($agentRun, $rule, $enrichedPayload, $project, $config);
+            $agentRuns[$rule->id] = $agentRun;
 
             $results[] = [
                 'rule' => $rule->id,
@@ -168,18 +154,21 @@ class AgentDispatcher
                 'agent_run_id' => $agentRun->id,
                 'pipeline' => true,
             ];
-
-            // In sync mode, wait for completion and collect output
-            if (config('queue.default') === 'sync') {
-                $agentRun->refresh();
-                if ($agentRun->status === 'success') {
-                    $upstreamOutputs[$rule->id] = $agentRun->output;
-                } elseif ($agentRun->status === 'failed') {
-                    $failedRules[$rule->id] = true;
-                    $results[array_key_last($results)]['status'] = 'failed';
-                }
-            }
         }
+
+        // Build the chain of jobs in topological order
+        $chainedJobs = [];
+        foreach ($sortedRules as $rule) {
+            $chainedJobs[] = new ProcessAgentRun(
+                $agentRuns[$rule->id],
+                $rule,
+                $payload,
+                $project,
+                $config,
+            );
+        }
+
+        Bus::chain($chainedJobs)->onQueue('agents')->dispatch();
 
         return $results;
     }
@@ -196,37 +185,5 @@ class AgentDispatcher
             'error' => $reason,
             'created_at' => now(),
         ]);
-    }
-
-    /**
-     * Find the first failed dependency for a rule.
-     *
-     * @param  array<string, bool>  $failedRules
-     */
-    protected function findFailedDependency(RuleConfig $rule, array $failedRules): ?string
-    {
-        foreach ($rule->dependsOn as $depId) {
-            if (isset($failedRules[$depId])) {
-                return $depId;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Collect upstream outputs for a rule's dependencies.
-     *
-     * @param  array<string, string>  $upstreamOutputs
-     * @return array<string, string|null>
-     */
-    protected function collectUpstreamOutputs(RuleConfig $rule, array $upstreamOutputs): array
-    {
-        $outputs = [];
-        foreach ($rule->dependsOn as $depId) {
-            $outputs[$depId] = $upstreamOutputs[$depId] ?? null;
-        }
-
-        return $outputs;
     }
 }

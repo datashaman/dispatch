@@ -147,9 +147,19 @@ class ConfigLoader
 
         $dependsOn = [];
         if (isset($ruleData['depends_on'])) {
-            $dependsOn = is_array($ruleData['depends_on'])
-                ? $ruleData['depends_on']
-                : [(string) $ruleData['depends_on']];
+            $raw = $ruleData['depends_on'];
+            if (is_string($raw)) {
+                $dependsOn = [$raw];
+            } elseif (is_array($raw)) {
+                foreach ($raw as $i => $dep) {
+                    if (! is_string($dep) && ! is_int($dep) && ! is_float($dep)) {
+                        throw new ConfigLoadException("Invalid depends_on entry at {$prefix}depends_on[{$i}] in {$filePath}: must be a string");
+                    }
+                    $dependsOn[] = (string) $dep;
+                }
+            } else {
+                throw new ConfigLoadException("Field '{$prefix}depends_on' must be a string or list of strings in {$filePath}");
+            }
         }
 
         return new RuleConfig(
