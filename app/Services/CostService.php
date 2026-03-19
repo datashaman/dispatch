@@ -19,10 +19,9 @@ class CostService
         $end = ($date ?? now())->copy()->endOfMonth();
 
         return (string) AgentRun::query()
-            ->join('webhook_logs', 'agent_runs.webhook_log_id', '=', 'webhook_logs.id')
-            ->where('agent_runs.status', 'success')
-            ->whereBetween('agent_runs.created_at', [$start, $end])
-            ->sum('agent_runs.cost');
+            ->where('status', 'success')
+            ->whereBetween('created_at', [$start, $end])
+            ->sum('cost');
     }
 
     /**
@@ -64,12 +63,11 @@ class CostService
         $end = ($date ?? now())->copy()->endOfMonth();
 
         return AgentRun::query()
-            ->join('webhook_logs', 'agent_runs.webhook_log_id', '=', 'webhook_logs.id')
-            ->where('agent_runs.status', 'success')
-            ->whereBetween('agent_runs.created_at', [$start, $end])
+            ->where('status', 'success')
+            ->whereBetween('created_at', [$start, $end])
             ->select(
-                DB::raw('date(agent_runs.created_at) as date'),
-                DB::raw('sum(agent_runs.cost) as cost'),
+                DB::raw('date(created_at) as date'),
+                DB::raw('sum(cost) as cost'),
             )
             ->groupBy('date')
             ->orderBy('date')
@@ -113,7 +111,7 @@ class CostService
                 'tokens' => (int) $row->tokens,
                 'cost' => $row->cost,
                 'budget' => $budget,
-                'budget_pct' => $budget ? round(($cost / (float) $budget) * 100, 1) : null,
+                'budget_pct' => $budget && (float) $budget > 0 ? round(($cost / (float) $budget) * 100, 1) : null,
             ];
         });
     }
@@ -121,7 +119,7 @@ class CostService
     /**
      * Get projects that are approaching or over budget.
      *
-     * @return Collection<int, array{repo: string, cost: string, budget: string, pct: float}>
+     * @return Collection<int, array{repo: string, runs: int, tokens: int, cost: string, budget: string|null, budget_pct: float|null}>
      */
     public function budgetAlerts(?Carbon $date = null): Collection
     {

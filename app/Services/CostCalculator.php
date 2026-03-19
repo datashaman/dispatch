@@ -59,12 +59,19 @@ class CostCalculator
             return self::PRICING[$model];
         }
 
-        // Prefix match (e.g., 'claude-sonnet-4-5-20250514' matches 'claude-sonnet-4-5')
+        // Prefix match — only match when the model starts with a known key.
+        // Pick the longest (most specific) match to avoid ambiguity.
+        $bestMatch = null;
+        $bestLength = 0;
+
         foreach (self::PRICING as $key => $pricing) {
-            if (str_starts_with($model, $key) || str_starts_with($key, $model)) {
-                return $pricing;
+            if (str_starts_with($model, $key) && strlen($key) > $bestLength) {
+                $bestMatch = $pricing;
+                $bestLength = strlen($key);
             }
         }
+
+        return $bestMatch;
 
         return null;
     }
