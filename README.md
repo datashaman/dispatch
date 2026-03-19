@@ -42,7 +42,7 @@ Output Routing
 - **`dispatch.yml`** — define rules in a YAML file in your repo; sync bidirectionally with the database
 - **Rule templates** — start from pre-built templates for common workflows (triage, review, implementation)
 - **GitHub App integration** — automated webhook setup, installation tokens, repo picker UI
-- **Prompt injection defense** — detects and blocks prompt injection attempts in webhook payloads
+- **Prompt injection defense** — structural separation of untrusted webhook content from agent instructions
 - **Live agent streaming** — watch agent execution in real time via Laravel Reverb
 - **Agent run diff view** — see exactly what files an agent changed
 - **Agent quality feedback** — rate agent outputs to improve future runs
@@ -114,7 +114,6 @@ The `dispatch.yml` in this repository is a fully-working example with four rules
 ## Documentation
 
 - **[Setup Guide](docs/setup.md)** — installation, GitHub App config, first rule
-- **[Code Walkthrough](docs/walkthrough.md)** — traces a webhook from ingestion to agent output
 - **[Design System](DESIGN.md)** — typography, color, spacing, component patterns
 - **[Agent Instructions](AGENTS.md)** — instructions for AI agents working on this codebase
 
