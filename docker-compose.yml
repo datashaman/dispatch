@@ -1,0 +1,78 @@
+services:
+  app:
+    build: .
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    env_file: .env
+    environment:
+      - DB_CONNECTION=sqlite
+      - DB_DATABASE=/data/sqlite/database.sqlite
+      - REDIS_HOST=redis
+      - QUEUE_CONNECTION=redis
+      - BROADCAST_CONNECTION=reverb
+      - APP_URL=http://localhost:${APP_PORT:-8000}
+      - REVERB_HOST=localhost
+      - REVERB_SCHEME=http
+    volumes:
+      - sqlite-data:/data/sqlite
+      - app-storage:/app/storage
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: >
+      sh -c "if [ -z \"$$APP_KEY\" ]; then php artisan key:generate --force; fi &&
+             php artisan migrate --force &&
+             php artisan serve --host=0.0.0.0 --port=8000"
+
+  queue:
+    build: .
+    env_file: .env
+    environment:
+      - DB_CONNECTION=sqlite
+      - DB_DATABASE=/data/sqlite/database.sqlite
+      - REDIS_HOST=redis
+      - QUEUE_CONNECTION=redis
+      - APP_URL=http://localhost:${APP_PORT:-8000}
+    volumes:
+      - sqlite-data:/data/sqlite
+      - app-storage:/app/storage
+    depends_on:
+      redis:
+        condition: service_healthy
+      app:
+        condition: service_started
+    command: php artisan queue:work redis --queue=agents,default --tries=3 --timeout=300
+
+  reverb:
+    build: .
+    ports:
+      - "${REVERB_PORT:-8080}:8080"
+    env_file: .env
+    environment:
+      - DB_CONNECTION=sqlite
+      - DB_DATABASE=/data/sqlite/database.sqlite
+      - REDIS_HOST=redis
+      - REVERB_SERVER_HOST=0.0.0.0
+      - REVERB_HOST=localhost
+      - REVERB_PORT=8080
+    volumes:
+      - sqlite-data:/data/sqlite
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: php artisan reverb:start --host=0.0.0.0 --port=8080
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  sqlite-data:
+  redis-data:
+  app-storage:
