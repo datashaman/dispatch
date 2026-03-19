@@ -38,7 +38,7 @@ class TemplateInstaller
             return ['success' => false, 'message' => 'Failed to parse dispatch.yml: '.$e->getMessage()];
         }
 
-        if (! is_array($data) || ! isset($data['rules'])) {
+        if (! is_array($data) || ! isset($data['rules']) || ! is_array($data['rules'])) {
             return ['success' => false, 'message' => 'Invalid dispatch.yml structure.'];
         }
 
@@ -52,7 +52,10 @@ class TemplateInstaller
         $data['rules'][] = $template['rule'];
 
         $yaml = Yaml::dump($data, 10, 2, Yaml::DUMP_MULTI_LINE_LITERAL_BLOCK);
-        file_put_contents($filePath, "---\n".$yaml);
+
+        if (file_put_contents($filePath, "---\n".$yaml) === false) {
+            return ['success' => false, 'message' => 'Failed to write dispatch.yml.'];
+        }
 
         // Clear config cache so the new rule is picked up
         $this->configLoader->clearCache($project->path);

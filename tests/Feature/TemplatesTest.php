@@ -57,53 +57,61 @@ test('template registry returns categories', function () {
 
 // --- TemplateInstaller ---
 
-test('template installer installs rule into dispatch.yml', function () {
+// Helper to create a temp project with dispatch.yml
+function createTempProject(array $rules = []): Project
+{
     $project = Project::factory()->create(['path' => sys_get_temp_dir().'/dispatch-test-'.uniqid()]);
     mkdir($project->path, 0755, true);
 
-    // Create a minimal dispatch.yml
     file_put_contents($project->path.'/dispatch.yml', Yaml::dump([
         'version' => 1,
         'agent' => ['name' => 'test', 'executor' => 'laravel-ai'],
-        'rules' => [],
+        'rules' => $rules,
     ]));
 
+    return $project;
+}
+
+function cleanupTempProject(Project $project): void
+{
+    $dir = $project->path;
+    if (is_dir($dir)) {
+        array_map('unlink', glob($dir.'/*'));
+        rmdir($dir);
+    }
+}
+
+afterEach(function () {
+    if (isset($this->tempProject)) {
+        cleanupTempProject($this->tempProject);
+    }
+});
+
+test('template installer installs rule into dispatch.yml', function () {
+    $this->tempProject = createTempProject();
+
     $installer = app(TemplateInstaller::class);
-    $result = $installer->install('issue-triage', $project);
+    $result = $installer->install('issue-triage', $this->tempProject);
 
     expect($result['success'])->toBeTrue();
     expect($result['message'])->toContain('Issue Triage');
 
-    // Verify the rule was written
-    $data = Yaml::parseFile($project->path.'/dispatch.yml');
+    $data = Yaml::parseFile($this->tempProject->path.'/dispatch.yml');
     expect($data['rules'])->toHaveCount(1);
     expect($data['rules'][0]['id'])->toBe('issue-triage');
     expect($data['rules'][0]['event'])->toBe('issues.opened');
-
-    // Cleanup
-    unlink($project->path.'/dispatch.yml');
-    rmdir($project->path);
 });
 
 test('template installer rejects duplicate rule id', function () {
-    $project = Project::factory()->create(['path' => sys_get_temp_dir().'/dispatch-test-'.uniqid()]);
-    mkdir($project->path, 0755, true);
-
-    file_put_contents($project->path.'/dispatch.yml', Yaml::dump([
-        'version' => 1,
-        'agent' => ['name' => 'test', 'executor' => 'laravel-ai'],
-        'rules' => [['id' => 'issue-triage', 'event' => 'issues.opened', 'prompt' => 'existing']],
-    ]));
+    $this->tempProject = createTempProject([
+        ['id' => 'issue-triage', 'event' => 'issues.opened', 'prompt' => 'existing'],
+    ]);
 
     $installer = app(TemplateInstaller::class);
-    $result = $installer->install('issue-triage', $project);
+    $result = $installer->install('issue-triage', $this->tempProject);
 
     expect($result['success'])->toBeFalse();
     expect($result['message'])->toContain('already exists');
-
-    // Cleanup
-    unlink($project->path.'/dispatch.yml');
-    rmdir($project->path);
 });
 
 test('template installer fails gracefully with missing dispatch.yml', function () {
@@ -127,26 +135,15 @@ test('template installer fails with unknown template', function () {
 });
 
 test('template installer returns installed rule ids', function () {
-    $project = Project::factory()->create(['path' => sys_get_temp_dir().'/dispatch-test-'.uniqid()]);
-    mkdir($project->path, 0755, true);
-
-    file_put_contents($project->path.'/dispatch.yml', Yaml::dump([
-        'version' => 1,
-        'agent' => ['name' => 'test', 'executor' => 'laravel-ai'],
-        'rules' => [
-            ['id' => 'issue-triage', 'event' => 'issues.opened', 'prompt' => 'test'],
-            ['id' => 'pr-review', 'event' => 'pull_request.opened', 'prompt' => 'test'],
-        ],
-    ]));
+    $this->tempProject = createTempProject([
+        ['id' => 'issue-triage', 'event' => 'issues.opened', 'prompt' => 'test'],
+        ['id' => 'pr-review', 'event' => 'pull_request.opened', 'prompt' => 'test'],
+    ]);
 
     $installer = app(TemplateInstaller::class);
-    $ids = $installer->installedRuleIds($project);
+    $ids = $installer->installedRuleIds($this->tempProject);
 
     expect($ids)->toBe(['issue-triage', 'pr-review']);
-
-    // Cleanup
-    unlink($project->path.'/dispatch.yml');
-    rmdir($project->path);
 });
 
 // --- Templates page ---
@@ -177,53 +174,30 @@ test('templates page shows install button when project selected', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
 
-    $project = Project::factory()->create(['path' => sys_get_temp_dir().'/dispatch-test-'.uniqid()]);
-    mkdir($project->path, 0755, true);
-
-    file_put_contents($project->path.'/dispatch.yml', Yaml::dump([
-        'version' => 1,
-        'agent' => ['name' => 'test', 'executor' => 'laravel-ai'],
-        'rules' => [],
-    ]));
+    $this->tempProject = createTempProject();
 
     Volt::test('pages::templates.index')
-        ->set('selectedProjectId', $project->id)
+        ->set('selectedProjectId', $this->tempProject->id)
         ->assertSee('Install');
-
-    // Cleanup
-    unlink($project->path.'/dispatch.yml');
-    rmdir($project->path);
 });
 
 test('templates page installs template to project', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
 
-    $project = Project::factory()->create(['path' => sys_get_temp_dir().'/dispatch-test-'.uniqid()]);
-    mkdir($project->path, 0755, true);
-
-    file_put_contents($project->path.'/dispatch.yml', Yaml::dump([
-        'version' => 1,
-        'agent' => ['name' => 'test', 'executor' => 'laravel-ai'],
-        'rules' => [],
-    ]));
+    $this->tempProject = createTempProject();
 
     Volt::test('pages::templates.index')
-        ->set('selectedProjectId', $project->id)
+        ->set('selectedProjectId', $this->tempProject->id)
         ->call('install', 'issue-triage')
         ->assertSee('installed');
 
-    // Verify rule in file
-    $data = Yaml::parseFile($project->path.'/dispatch.yml');
+    $data = Yaml::parseFile($this->tempProject->path.'/dispatch.yml');
     expect($data['rules'])->toHaveCount(1);
     expect($data['rules'][0]['id'])->toBe('issue-triage');
-
-    // Cleanup
-    unlink($project->path.'/dispatch.yml');
-    rmdir($project->path);
 });
 
 test('templates page requires authentication', function () {
     $this->get('/templates')
-        ->assertRedirect('/login');
+        ->assertRedirect(route('login'));
 });
