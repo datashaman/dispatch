@@ -52,7 +52,7 @@ class ProcessAgentRun implements ShouldQueue
             'attempt' => $attempt,
         ]);
 
-        AgentRunUpdated::dispatch($this->agentRun);
+        $this->broadcastUpdate();
 
         // Add reaction immediately so the user knows the agent is working
         $outputConfig = $this->ruleConfig->output ?? new OutputConfig;
@@ -91,7 +91,7 @@ class ProcessAgentRun implements ShouldQueue
                 'error' => $result->error,
             ]);
 
-            AgentRunUpdated::dispatch($this->agentRun);
+            $this->broadcastUpdate();
 
             if ($result->status === 'success') {
                 app(OutputHandler::class)->handle(
@@ -120,7 +120,23 @@ class ProcessAgentRun implements ShouldQueue
             'error' => $exception?->getMessage(),
         ]);
 
-        AgentRunUpdated::dispatch($this->agentRun);
+        $this->broadcastUpdate();
+    }
+
+    /**
+     * Broadcast agent run status update, swallowing failures so
+     * broadcasting issues don't affect agent execution.
+     */
+    protected function broadcastUpdate(): void
+    {
+        try {
+            AgentRunUpdated::dispatch($this->agentRun);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to broadcast AgentRunUpdated', [
+                'agent_run_id' => $this->agentRun->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

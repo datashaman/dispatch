@@ -7,11 +7,14 @@ use App\Contracts\Executor;
 use App\DataTransferObjects\ExecutionResult;
 use App\Models\AgentRun;
 use App\Services\ToolRegistry;
-use Illuminate\Broadcasting\Channel;
+use Illuminate\Broadcasting\PrivateChannel;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Laravel\Ai\Contracts\Tool;
-use Laravel\Ai\Responses\StreamedAgentResponse;
+use Laravel\Ai\Streaming\Events\StreamEvent;
+use Laravel\Ai\Streaming\Events\ToolCall;
+use Laravel\Ai\Streaming\Events\ToolResult;
 use Throwable;
 
 class LaravelAiExecutor implements Executor
@@ -56,37 +59,41 @@ class LaravelAiExecutor implements Executor
                 'agent_run_id' => $run->id,
             ]);
 
-            $channel = new Channel('agent-run.'.$run->id);
-            $result = null;
+            $channel = new PrivateChannel('agent-run.'.$run->id);
 
-            $agent->broadcastNow(
+            // stream() + each() iterates synchronously — events are broadcast
+            // inline, and the response is fully consumed before we continue.
+            $streamable = $agent->stream(
                 prompt: $renderedPrompt,
-                channels: [$channel],
                 provider: $provider,
                 model: $model,
-            )->then(function (StreamedAgentResponse $response) use ($run, $startTime, &$result) {
-                Log::info('LaravelAiExecutor: stream completed', [
-                    'agent_run_id' => $run->id,
-                    'prompt_tokens' => $response->usage->promptTokens ?? null,
-                    'completion_tokens' => $response->usage->completionTokens ?? null,
-                    'output_length' => strlen($response->text ?? ''),
-                ]);
-
-                $durationMs = (int) ((hrtime(true) - $startTime) / 1_000_000);
-                $tokensUsed = $response->usage->promptTokens + $response->usage->completionTokens;
-
-                $result = new ExecutionResult(
-                    status: 'success',
-                    output: $response->text,
-                    tokensUsed: $tokensUsed,
-                    durationMs: $durationMs,
-                );
+            )->each(function (StreamEvent $event) use ($channel) {
+                $event->broadcastNow([$channel]);
             });
 
-            return $result ?? new ExecutionResult(
-                status: 'failed',
-                error: 'Stream completed without producing a result',
-                durationMs: (int) ((hrtime(true) - $startTime) / 1_000_000),
+            // At this point the stream has been fully consumed.
+            $text = $streamable->text;
+            $usage = $streamable->usage;
+
+            Log::info('LaravelAiExecutor: stream completed', [
+                'agent_run_id' => $run->id,
+                'prompt_tokens' => $usage->promptTokens ?? null,
+                'completion_tokens' => $usage->completionTokens ?? null,
+                'output_length' => strlen($text ?? ''),
+            ]);
+
+            $durationMs = (int) ((hrtime(true) - $startTime) / 1_000_000);
+            $tokensUsed = ($usage->promptTokens ?? 0) + ($usage->completionTokens ?? 0);
+
+            // Extract tool calls and results from stream events for step history
+            $steps = $this->extractStepsFromEvents($streamable->events);
+
+            return new ExecutionResult(
+                status: 'success',
+                output: $text,
+                steps: $steps ?: null,
+                tokensUsed: $tokensUsed,
+                durationMs: $durationMs,
             );
         } catch (Throwable $e) {
             $durationMs = (int) ((hrtime(true) - $startTime) / 1_000_000);
@@ -150,6 +157,37 @@ class LaravelAiExecutor implements Executor
         }
 
         return "\n\n## Output Routing\n\n".implode("\n", $lines);
+    }
+
+    /**
+     * Extract step data from stream events for storage.
+     *
+     * @return list<array<string, mixed>>
+     */
+    protected function extractStepsFromEvents(Collection $events): array
+    {
+        $steps = [];
+        $currentStep = ['tool_calls' => [], 'tool_results' => []];
+
+        foreach ($events as $event) {
+            if ($event instanceof ToolCall) {
+                $currentStep['tool_calls'][] = [
+                    'name' => $event->toolCall->name ?? 'unknown',
+                    'arguments' => $event->toolCall->arguments ?? [],
+                ];
+            } elseif ($event instanceof ToolResult) {
+                $currentStep['tool_results'][] = [
+                    'name' => $event->toolResult->name ?? 'unknown',
+                    'result' => $event->toolResult->result ?? '',
+                ];
+
+                // Each tool result completes a step
+                $steps[] = $currentStep;
+                $currentStep = ['tool_calls' => [], 'tool_results' => []];
+            }
+        }
+
+        return $steps;
     }
 
     /**

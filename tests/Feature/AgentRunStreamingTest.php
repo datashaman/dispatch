@@ -4,11 +4,11 @@ use App\Events\AgentRunUpdated;
 use App\Models\AgentRun;
 use App\Models\User;
 use App\Models\WebhookLog;
-use Illuminate\Broadcasting\Channel;
+use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Support\Facades\Event;
 use Livewire\Volt\Volt;
 
-test('AgentRunUpdated broadcasts on public channel', function () {
+test('AgentRunUpdated broadcasts on private channel', function () {
     $webhookLog = WebhookLog::factory()->create();
     $agentRun = AgentRun::factory()->create([
         'webhook_log_id' => $webhookLog->id,
@@ -20,8 +20,8 @@ test('AgentRunUpdated broadcasts on public channel', function () {
 
     $channels = $event->broadcastOn();
     expect($channels)->toHaveCount(1);
-    expect($channels[0])->toBeInstanceOf(Channel::class);
-    expect($channels[0]->name)->toBe("agent-run.{$agentRun->id}");
+    expect($channels[0])->toBeInstanceOf(PrivateChannel::class);
+    expect($channels[0]->name)->toBe("private-agent-run.{$agentRun->id}");
 });
 
 test('AgentRunUpdated includes run data in broadcast payload', function () {
@@ -49,7 +49,7 @@ test('AgentRunUpdated includes run data in broadcast payload', function () {
     expect($payload['error'])->toBeNull();
 });
 
-test('AgentRunUpdated dispatched when agent run status changes to running', function () {
+test('AgentRunUpdated can be dispatched with running status', function () {
     Event::fake([AgentRunUpdated::class]);
 
     $webhookLog = WebhookLog::factory()->create();
@@ -68,7 +68,7 @@ test('AgentRunUpdated dispatched when agent run status changes to running', func
     });
 });
 
-test('AgentRunUpdated dispatched when agent run completes', function () {
+test('AgentRunUpdated can be dispatched with success status', function () {
     Event::fake([AgentRunUpdated::class]);
 
     $webhookLog = WebhookLog::factory()->create();
@@ -87,7 +87,7 @@ test('AgentRunUpdated dispatched when agent run completes', function () {
     });
 });
 
-test('AgentRunUpdated dispatched when agent run fails', function () {
+test('AgentRunUpdated can be dispatched with failed status', function () {
     Event::fake([AgentRunUpdated::class]);
 
     $webhookLog = WebhookLog::factory()->create();
