@@ -6,6 +6,7 @@ use App\Contracts\Executor;
 use App\DataTransferObjects\DispatchConfig;
 use App\DataTransferObjects\OutputConfig;
 use App\DataTransferObjects\RuleConfig;
+use App\Events\AgentRunUpdated;
 use App\Executors\ClaudeCliExecutor;
 use App\Executors\LaravelAiExecutor;
 use App\Models\AgentRun;
@@ -51,6 +52,8 @@ class ProcessAgentRun implements ShouldQueue
             'attempt' => $attempt,
         ]);
 
+        AgentRunUpdated::dispatch($this->agentRun);
+
         // Add reaction immediately so the user knows the agent is working
         $outputConfig = $this->ruleConfig->output ?? new OutputConfig;
         if ($outputConfig->githubReaction) {
@@ -88,6 +91,8 @@ class ProcessAgentRun implements ShouldQueue
                 'error' => $result->error,
             ]);
 
+            AgentRunUpdated::dispatch($this->agentRun);
+
             if ($result->status === 'success') {
                 app(OutputHandler::class)->handle(
                     $this->agentRun,
@@ -114,6 +119,8 @@ class ProcessAgentRun implements ShouldQueue
             'attempt' => $this->attempts(),
             'error' => $exception?->getMessage(),
         ]);
+
+        AgentRunUpdated::dispatch($this->agentRun);
     }
 
     /**
