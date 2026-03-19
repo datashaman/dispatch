@@ -1,6 +1,39 @@
 <?php
 
+use App\EventSources\GitHub\GitHubEventSource;
+use App\EventSources\GitHub\GitHubOutputAdapter;
+use App\EventSources\GitHub\GitHubThreadKeyDeriver;
+use App\EventSources\GitLab\GitLabEventSource;
+use App\EventSources\GitLab\GitLabOutputAdapter;
+use App\EventSources\GitLab\GitLabThreadKeyDeriver;
+
 return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Event Sources
+    |--------------------------------------------------------------------------
+    |
+    | Registered webhook event sources. Each source provides an EventSource
+    | for validation/extraction, an OutputAdapter for posting results back,
+    | and a ThreadKeyDeriver for conversation memory continuity.
+    |
+    */
+
+    'sources' => [
+        'github' => [
+            'enabled' => true,
+            'source' => GitHubEventSource::class,
+            'output' => GitHubOutputAdapter::class,
+            'thread_key' => GitHubThreadKeyDeriver::class,
+        ],
+        'gitlab' => [
+            'enabled' => true,
+            'source' => GitLabEventSource::class,
+            'output' => GitLabOutputAdapter::class,
+            'thread_key' => GitLabThreadKeyDeriver::class,
+        ],
+    ],
 
     /*
     |--------------------------------------------------------------------------

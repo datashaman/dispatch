@@ -56,7 +56,7 @@ it('returns 400 when X-GitHub-Event header is missing', function (): void {
     $response->assertStatus(400)
         ->assertJson([
             'ok' => false,
-            'error' => 'Missing X-GitHub-Event header',
+            'error' => 'Unable to detect webhook source',
         ]);
 });
 
@@ -187,7 +187,7 @@ it('returns 401 on invalid signature', function (): void {
 
     $this->assertDatabaseHas('webhook_logs', [
         'status' => 'error',
-        'error' => 'Invalid signature',
+        'error' => 'Invalid webhook signature',
     ]);
 });
 

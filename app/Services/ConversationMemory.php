@@ -7,15 +7,35 @@ use Illuminate\Support\Arr;
 
 class ConversationMemory
 {
+    public function __construct(
+        protected EventSourceRegistry $registry,
+    ) {}
+
     /**
      * Derive a conversation thread key from the webhook payload.
      *
-     * Format: {repo}:{resource_type}:{resource_number}
-     * Example: owner/repo:issue:123, owner/repo:pr:456, owner/repo:discussion:789
+     * Delegates to the appropriate ThreadKeyDeriver based on source.
      *
      * @param  array<string, mixed>  $payload
      */
-    public function deriveThreadKey(array $payload): ?string
+    public function deriveThreadKey(array $payload, string $source = 'github', ?string $eventType = null): ?string
+    {
+        try {
+            $deriver = $this->registry->threadKey($source);
+
+            return $deriver->deriveKey($eventType ?? '', $payload);
+        } catch (\InvalidArgumentException) {
+            // Fall back to legacy behavior if source not registered
+            return $this->deriveThreadKeyLegacy($payload);
+        }
+    }
+
+    /**
+     * Legacy thread key derivation for backwards compatibility.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    protected function deriveThreadKeyLegacy(array $payload): ?string
     {
         $repo = Arr::get($payload, 'repository.full_name');
 
@@ -41,10 +61,6 @@ class ConversationMemory
     /**
      * Retrieve prior conversation history for a thread.
      *
-     * Returns prior agent runs (with prompts and outputs) for the same thread key,
-     * ordered chronologically.
-     *
-     * @param  array<string, mixed>  $payload
      * @return list<array{role: string, content: string}>
      */
     public function retrieveHistory(string $threadKey, ?int $excludeRunId = null): array
@@ -87,13 +103,13 @@ class ConversationMemory
 
         foreach ($runs as $run) {
             $runPayload = $run->webhookLog->payload ?? [];
-            $runThreadKey = $this->deriveThreadKey($runPayload);
+            $runSource = $run->webhookLog->source ?? 'github';
+            $runThreadKey = $this->deriveThreadKey($runPayload, $runSource, $run->webhookLog->event_type);
 
             if ($runThreadKey !== $threadKey) {
                 continue;
             }
 
-            // Add the prompt that was sent (stored on the rule, rendered with payload)
             if ($run->webhookLog) {
                 $messages[] = [
                     'role' => 'user',
@@ -101,7 +117,6 @@ class ConversationMemory
                 ];
             }
 
-            // Add the agent's response
             $messages[] = [
                 'role' => 'assistant',
                 'content' => $run->output,

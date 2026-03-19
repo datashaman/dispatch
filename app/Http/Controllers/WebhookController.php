@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\EventSources\GitHub\GitHubEventSource;
 use App\Exceptions\RuleMatchingException;
 use App\Models\Project;
 use App\Models\WebhookLog;
 use App\Services\AgentDispatcher;
 use App\Services\ConfigLoader;
+use App\Services\EventSourceRegistry;
 use App\Services\PromptRenderer;
 use App\Services\RuleMatchingEngine;
 use Illuminate\Http\JsonResponse;
@@ -19,72 +21,64 @@ class WebhookController extends Controller
         protected AgentDispatcher $dispatcher,
         protected PromptRenderer $promptRenderer,
         protected ConfigLoader $configLoader,
+        protected EventSourceRegistry $registry,
     ) {}
 
     public function handle(Request $request): JsonResponse
     {
-        $githubEvent = $request->header('X-GitHub-Event');
+        $sourceName = $this->registry->detect($request);
 
-        if (! $githubEvent) {
+        if (! $sourceName) {
             return response()->json([
                 'ok' => false,
-                'error' => 'Missing X-GitHub-Event header',
+                'error' => 'Unable to detect webhook source',
             ], 400);
         }
 
-        if ($this->shouldVerifySignature()) {
-            $signature = $request->header('X-Hub-Signature-256');
-            $secret = config('services.github.webhook_secret');
+        $source = $this->registry->source($sourceName);
 
-            if (! $signature || ! $secret) {
-                $this->logWebhook($githubEvent, $request, 'error', 'Missing signature or webhook secret');
+        // Verify webhook authenticity (signature, token, etc.)
+        if (! $source->verifyWebhook($request)) {
+            $eventType = $source->eventType($request) ?? 'unknown';
+            $error = $source->verificationError($request);
 
-                return response()->json([
-                    'ok' => false,
-                    'error' => 'Missing X-Hub-Signature-256 header or webhook secret not configured',
-                ], 401);
-            }
-
-            $expectedSignature = 'sha256='.hash_hmac('sha256', $request->getContent(), $secret);
-
-            if (! hash_equals($expectedSignature, $signature)) {
-                $this->logWebhook($githubEvent, $request, 'error', 'Invalid signature');
-
-                return response()->json([
-                    'ok' => false,
-                    'error' => 'Invalid webhook signature',
-                ], 401);
-            }
-        }
-
-        if ($this->isSelfLoop($request)) {
-            $action = $request->input('action');
-            $eventType = $action ? "{$githubEvent}.{$action}" : $githubEvent;
-
-            $this->logWebhook($eventType, $request, 'received', 'Self-loop detected');
+            $this->logWebhook($eventType, $request, 'error', $error, $sourceName);
 
             return response()->json([
-                'ok' => true,
-                'event' => $eventType,
-                'skipped' => 'self-loop',
-            ]);
+                'ok' => false,
+                'error' => $error,
+            ], 401);
         }
 
-        if ($githubEvent === 'ping') {
-            $this->logWebhook('ping', $request, 'received');
+        // Source-specific pre-processing (self-loop, ping, etc.)
+        if ($source instanceof GitHubEventSource) {
+            if ($source->isSelfLoop($request)) {
+                $eventType = $source->eventType($request) ?? 'unknown';
+                $this->logWebhook($eventType, $request, 'received', 'Self-loop detected', $sourceName);
 
-            return response()->json([
-                'ok' => true,
-                'event' => 'ping',
-            ]);
+                return response()->json([
+                    'ok' => true,
+                    'event' => $eventType,
+                    'skipped' => 'self-loop',
+                ]);
+            }
+
+            if ($source->isPing($request)) {
+                $this->logWebhook('ping', $request, 'received', null, $sourceName);
+
+                return response()->json([
+                    'ok' => true,
+                    'event' => 'ping',
+                ]);
+            }
         }
 
-        $action = $request->input('action');
-        $eventType = $action ? "{$githubEvent}.{$action}" : $githubEvent;
+        $eventType = $source->eventType($request) ?? 'unknown';
 
-        $webhookLog = $this->logWebhook($eventType, $request, 'received');
+        $webhookLog = $this->logWebhook($eventType, $request, 'received', null, $sourceName);
 
-        $repo = $request->input('repository.full_name');
+        $payload = $source->normalizePayload($request);
+        $repo = $payload['repository']['full_name'] ?? null;
 
         if (! $repo) {
             $webhookLog->update(['status' => 'error', 'error' => 'Missing repository.full_name in payload']);
@@ -97,7 +91,7 @@ class WebhookController extends Controller
         }
 
         try {
-            $matchedRules = $this->engine->match($repo, $eventType, $request->all());
+            $matchedRules = $this->engine->match($repo, $eventType, $payload);
         } catch (RuleMatchingException $e) {
             $webhookLog->update(['status' => 'error', 'error' => $e->getMessage()]);
 
@@ -117,7 +111,7 @@ class WebhookController extends Controller
             $results = $matchedRules->map(fn ($rule) => [
                 'rule' => $rule->id,
                 'name' => $rule->name,
-                'prompt' => $this->promptRenderer->render($rule->prompt, $request->all()),
+                'prompt' => $this->promptRenderer->render($rule->prompt, $payload),
             ])->values()->toArray();
 
             return response()->json([
@@ -130,11 +124,10 @@ class WebhookController extends Controller
             ]);
         }
 
-        // Load project and config for the dispatcher
         $project = Project::where('repo', $repo)->firstOrFail();
         $config = $this->configLoader->load($project->path);
 
-        $results = $this->dispatcher->dispatch($webhookLog, $matchedRules, $request->all(), $project, $config);
+        $results = $this->dispatcher->dispatch($webhookLog, $matchedRules, $payload, $project, $config);
 
         return response()->json([
             'ok' => true,
@@ -145,25 +138,7 @@ class WebhookController extends Controller
         ]);
     }
 
-    protected function isSelfLoop(Request $request): bool
-    {
-        $botUsername = config('services.github.bot_username');
-
-        if (! $botUsername) {
-            return false;
-        }
-
-        $senderLogin = $request->input('sender.login');
-
-        return $senderLogin === $botUsername;
-    }
-
-    protected function shouldVerifySignature(): bool
-    {
-        return config('services.github.verify_webhook_signature', true);
-    }
-
-    protected function logWebhook(string $eventType, Request $request, string $status, ?string $error = null): WebhookLog
+    protected function logWebhook(string $eventType, Request $request, string $status, ?string $error = null, string $source = 'github'): WebhookLog
     {
         $payload = $request->all();
         $repo = $payload['repository']['full_name'] ?? null;
@@ -172,6 +147,7 @@ class WebhookController extends Controller
             'event_type' => $eventType,
             'repo' => $repo,
             'payload' => $payload,
+            'source' => $source,
             'status' => $status,
             'error' => $error,
             'created_at' => now(),

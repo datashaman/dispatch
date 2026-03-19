@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Log;
 class OutputHandler
 {
     public function __construct(
+        protected EventSourceRegistry $registry,
         protected GitHubApiClient $github,
     ) {}
 
@@ -17,19 +18,96 @@ class OutputHandler
      *
      * @param  array<string, mixed>  $payload
      */
-    public function handle(AgentRun $agentRun, OutputConfig $outputConfig, array $payload): void
+    public function handle(AgentRun $agentRun, OutputConfig $outputConfig, array $payload, ?string $source = null): void
     {
+        $source = $source ?? $this->resolveSource($agentRun);
+
         if ($outputConfig->githubComment) {
-            $this->postGitHubComment($agentRun, $payload);
+            $this->postComment($agentRun, $payload, $source);
         }
     }
 
     /**
-     * Post agent output as a comment on the source GitHub resource.
+     * Post agent output as a comment via the appropriate output adapter.
      *
      * @param  array<string, mixed>  $payload
      */
-    protected function postGitHubComment(AgentRun $agentRun, array $payload): void
+    protected function postComment(AgentRun $agentRun, array $payload, string $source): void
+    {
+        try {
+            $adapter = $this->registry->output($source);
+            $adapter->postComment($agentRun, $payload);
+        } catch (\InvalidArgumentException $e) {
+            // Fall back to legacy GitHub behavior for backwards compatibility
+            $this->postGitHubCommentLegacy($agentRun, $payload);
+        }
+    }
+
+    /**
+     * Add a reaction via the appropriate output adapter.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public function addReaction(string $reaction, array $payload, ?string $source = null): void
+    {
+        $source = $source ?? 'github';
+
+        try {
+            $adapter = $this->registry->output($source);
+            $adapter->addReaction($reaction, $payload);
+        } catch (\InvalidArgumentException $e) {
+            // Fall back to legacy GitHub behavior for backwards compatibility
+            $this->addReactionLegacy($reaction, $payload);
+        }
+    }
+
+    /**
+     * Resolve the source from the agent run's webhook log, defaulting to 'github'.
+     */
+    protected function resolveSource(AgentRun $agentRun): string
+    {
+        return $agentRun->webhookLog?->source ?? 'github';
+    }
+
+    /**
+     * Resolve the GitHub resource type and number from the webhook payload.
+     * Kept for backwards compatibility with existing code that calls this method.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array{type: string, number: int}|null
+     */
+    public function resolveGitHubResource(array $payload): ?array
+    {
+        if (isset($payload['pull_request']['number'])) {
+            return [
+                'type' => 'issues',
+                'number' => $payload['pull_request']['number'],
+            ];
+        }
+
+        if (isset($payload['issue']['number'])) {
+            return [
+                'type' => 'issues',
+                'number' => $payload['issue']['number'],
+            ];
+        }
+
+        if (isset($payload['discussion']['number'])) {
+            return [
+                'type' => 'discussions',
+                'number' => $payload['discussion']['number'],
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * Legacy GitHub comment posting for backwards compatibility.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    protected function postGitHubCommentLegacy(AgentRun $agentRun, array $payload): void
     {
         $resource = $this->resolveGitHubResource($payload);
 
@@ -72,29 +150,21 @@ class OutputHandler
             return;
         }
 
-        $result = $this->github->postComment(
+        $this->github->postComment(
             $repo,
             $resource['type'],
             $resource['number'],
             $output,
             $installationId,
         );
-
-        if (! $result) {
-            Log::error('Failed to post GitHub comment', [
-                'agent_run_id' => $agentRun->id,
-                'repo' => $repo,
-                'resource' => "{$resource['type']}/{$resource['number']}",
-            ]);
-        }
     }
 
     /**
-     * Add a reaction to the triggering comment via GitHub API.
+     * Legacy reaction adding for backwards compatibility.
      *
      * @param  array<string, mixed>  $payload
      */
-    public function addReaction(string $reaction, array $payload): void
+    protected function addReactionLegacy(string $reaction, array $payload): void
     {
         $repo = $payload['repository']['full_name'] ?? null;
 
@@ -112,7 +182,6 @@ class OutputHandler
             return;
         }
 
-        // Try comment reaction first, fall back to issue/PR reaction
         $commentId = $payload['comment']['id'] ?? null;
 
         if ($commentId) {
@@ -132,40 +201,6 @@ class OutputHandler
     }
 
     /**
-     * Resolve the GitHub resource type and number from the webhook payload.
-     *
-     * @param  array<string, mixed>  $payload
-     * @return array{type: string, number: int}|null
-     */
-    public function resolveGitHubResource(array $payload): ?array
-    {
-        if (isset($payload['pull_request']['number'])) {
-            return [
-                'type' => 'issues',
-                'number' => $payload['pull_request']['number'],
-            ];
-        }
-
-        if (isset($payload['issue']['number'])) {
-            return [
-                'type' => 'issues',
-                'number' => $payload['issue']['number'],
-            ];
-        }
-
-        if (isset($payload['discussion']['number'])) {
-            return [
-                'type' => 'discussions',
-                'number' => $payload['discussion']['number'],
-            ];
-        }
-
-        return null;
-    }
-
-    /**
-     * Resolve the comment resource type for reactions API.
-     *
      * @param  array<string, mixed>  $payload
      */
     protected function resolveCommentResourceType(array $payload): string
@@ -182,20 +217,16 @@ class OutputHandler
     }
 
     /**
-     * Resolve the installation ID from the payload or project lookup.
-     *
      * @param  array<string, mixed>  $payload
      */
     protected function resolveInstallationId(string $repo, array $payload): ?int
     {
-        // Prefer installation ID from the webhook payload (most reliable)
         $payloadInstallationId = $payload['installation']['id'] ?? null;
 
         if ($payloadInstallationId) {
             return (int) $payloadInstallationId;
         }
 
-        // Fall back to project's linked installation
         return $this->github->resolveInstallationId($repo);
     }
 }
