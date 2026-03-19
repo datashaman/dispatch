@@ -4,6 +4,7 @@ use App\Models\GitHubInstallation;
 use App\Models\Project;
 use App\Models\User;
 use App\Services\GitHubAppService;
+use Illuminate\Support\Facades\File;
 use Livewire\Volt\Volt;
 
 beforeEach(function () {
@@ -113,7 +114,7 @@ test('can register a repo from the picker', function () {
         expect($project->path)->toBe($path);
         expect($project->github_installation_id)->toBe($this->installation->id);
     } finally {
-        @rmdir($path);
+        File::deleteDirectory($path);
     }
 });
 
@@ -222,4 +223,61 @@ test('repo picker shows error when api call fails', function () {
     Volt::test('pages::projects.index')
         ->call('openRepoPicker')
         ->assertSet('errorMessage', 'Failed to load repositories: Connection refused');
+});
+
+test('repo picker search filters results and resets page', function () {
+    $this->mockAppService->shouldReceive('listRepositories')
+        ->andReturn([
+            'total_count' => 3,
+            'repositories' => [
+                ['id' => 1, 'full_name' => 'owner/api-service', 'description' => '', 'private' => false, 'language' => null],
+                ['id' => 2, 'full_name' => 'owner/web-app', 'description' => '', 'private' => false, 'language' => null],
+                ['id' => 3, 'full_name' => 'owner/api-gateway', 'description' => '', 'private' => false, 'language' => null],
+            ],
+        ]);
+
+    Volt::test('pages::projects.index')
+        ->call('openRepoPicker')
+        ->assertSee('owner/api-service')
+        ->assertSee('owner/web-app')
+        ->set('repoPickerSearch', 'api')
+        ->assertSee('owner/api-service')
+        ->assertSee('owner/api-gateway')
+        ->assertDontSee('owner/web-app')
+        ->assertSet('repoPickerPage', 1);
+});
+
+test('repo picker switches between installations', function () {
+    GitHubInstallation::factory()->create([
+        'installation_id' => 67890,
+        'account_login' => 'zorg',
+    ]);
+
+    $this->mockAppService->shouldReceive('listRepositories')
+        ->with(12345, 1, 20)
+        ->andReturn([
+            'total_count' => 1,
+            'repositories' => [
+                ['id' => 1, 'full_name' => 'owner/repo-one', 'description' => '', 'private' => false, 'language' => null],
+            ],
+        ]);
+
+    $this->mockAppService->shouldReceive('listRepositories')
+        ->with(67890, 1, 20)
+        ->andReturn([
+            'total_count' => 1,
+            'repositories' => [
+                ['id' => 2, 'full_name' => 'zorg/repo-two', 'description' => '', 'private' => false, 'language' => null],
+            ],
+        ]);
+
+    Volt::test('pages::projects.index')
+        ->call('openRepoPicker')
+        ->assertSee('owner/repo-one')
+        ->assertSee('owner')
+        ->assertSee('zorg')
+        ->call('switchInstallation', 67890)
+        ->assertSet('repoPickerInstallationId', 67890)
+        ->assertSet('repoPickerPage', 1)
+        ->assertSee('zorg/repo-two');
 });
