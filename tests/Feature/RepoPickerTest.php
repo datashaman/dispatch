@@ -35,7 +35,7 @@ test('connect repos button hidden when no github app configured', function () {
     GitHubInstallation::query()->delete();
 
     Volt::test('pages::projects.index')
-        ->assertSee('No projects registered')
+        ->assertSee('No repos connected')
         ->assertSee('Set up GitHub App');
 });
 
@@ -169,7 +169,7 @@ test('empty state shows setup github app link when not configured', function () 
     GitHubInstallation::query()->delete();
 
     Volt::test('pages::projects.index')
-        ->assertSee('No projects registered')
+        ->assertSee('No repos connected')
         ->assertSee('Set up GitHub App');
 });
 
