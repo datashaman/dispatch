@@ -12,7 +12,11 @@ new #[Title('Browse Repositories')] class extends Component {
     public GitHubInstallation $installation;
 
     public int $page = 1;
+    public int $perPage = 100;
     public int $totalCount = 0;
+    public string $search = '';
+    public string $sort = 'full_name';
+    public string $direction = 'asc';
     public string $statusMessage = '';
     public string $errorMessage = '';
     public string $registerPath = '';
@@ -24,23 +28,80 @@ new #[Title('Browse Repositories')] class extends Component {
         $this->installation = $installation;
     }
 
+    public function updatedSearch(): void
+    {
+        $this->page = 1;
+        unset($this->repos);
+    }
+
+    public function updatedSort(): void
+    {
+        $this->page = 1;
+        unset($this->repos);
+    }
+
+    public function updatedDirection(): void
+    {
+        $this->page = 1;
+        unset($this->repos);
+    }
+
     #[Computed]
     public function repos(): array
     {
         try {
-            $result = app(GitHubAppService::class)->listRepositories(
-                $this->installation->installation_id,
-                $this->page,
-            );
+            $allRepos = $this->allRepos();
 
-            $this->totalCount = $result['total_count'] ?? 0;
+            // Filter
+            if ($this->search !== '') {
+                $allRepos = array_values(array_filter($allRepos, function (array $repo): bool {
+                    return stripos($repo['full_name'], $this->search) !== false
+                        || stripos($repo['description'] ?? '', $this->search) !== false;
+                }));
+            }
 
-            return $result['repositories'] ?? [];
+            // Sort
+            usort($allRepos, function (array $a, array $b): int {
+                $valA = $a[$this->sort] ?? '';
+                $valB = $b[$this->sort] ?? '';
+                $cmp = strnatcasecmp((string) $valA, (string) $valB);
+
+                return $this->direction === 'desc' ? -$cmp : $cmp;
+            });
+
+            $this->totalCount = count($allRepos);
+            $offset = ($this->page - 1) * $this->perPage;
+
+            return array_slice($allRepos, $offset, $this->perPage);
         } catch (\Throwable $e) {
             $this->errorMessage = "Failed to load repositories: {$e->getMessage()}";
 
             return [];
         }
+    }
+
+    protected function allRepos(): array
+    {
+        return \Illuminate\Support\Facades\Cache::remember(
+            "github_repos_{$this->installation->installation_id}",
+            300,
+            function (): array {
+                $service = app(GitHubAppService::class);
+                $repos = [];
+                $page = 1;
+
+                do {
+                    $result = $service->listRepositories(
+                        $this->installation->installation_id,
+                        $page,
+                    );
+                    $repos = array_merge($repos, $result['repositories'] ?? []);
+                    $page++;
+                } while (count($result['repositories'] ?? []) === 100);
+
+                return $repos;
+            },
+        );
     }
 
     #[Computed]
@@ -52,7 +113,7 @@ new #[Title('Browse Repositories')] class extends Component {
     #[Computed]
     public function totalPages(): int
     {
-        return max(1, (int) ceil($this->totalCount / 100));
+        return max(1, (int) ceil($this->totalCount / $this->perPage));
     }
 
     public function previousPage(): void
@@ -135,6 +196,20 @@ new #[Title('Browse Repositories')] class extends Component {
                 </flux:callout>
             @endif
 
+            {{-- Search & Sort --}}
+            <div class="flex items-center gap-2">
+                <div class="flex-1">
+                    <flux:input wire:model.live.debounce.300ms="search" placeholder="Search repositories..." icon="magnifying-glass" clearable />
+                </div>
+                <flux:select wire:model.live="sort" class="w-40">
+                    <flux:select.option value="full_name">{{ __('Name') }}</flux:select.option>
+                    <flux:select.option value="created_at">{{ __('Created') }}</flux:select.option>
+                    <flux:select.option value="updated_at">{{ __('Updated') }}</flux:select.option>
+                    <flux:select.option value="pushed_at">{{ __('Pushed') }}</flux:select.option>
+                </flux:select>
+                <flux:button variant="ghost" size="sm" wire:click="$set('direction', '{{ $direction === 'asc' ? 'desc' : 'asc' }}')" icon="{{ $direction === 'asc' ? 'bars-arrow-up' : 'bars-arrow-down' }}" />
+            </div>
+
             {{-- Register Modal --}}
             <flux:modal wire:model="showRegisterModal">
                 <form wire:submit="registerProject">
@@ -212,7 +287,9 @@ new #[Title('Browse Repositories')] class extends Component {
                     </div>
                 @endif
             @elseif (! $errorMessage)
-                <flux:text class="text-zinc-500">{{ __('No repositories found for this installation.') }}</flux:text>
+                <flux:text class="text-zinc-500">
+                    {{ $search !== '' ? __('No repositories match your search.') : __('No repositories found for this installation.') }}
+                </flux:text>
             @endif
         </div>
     </x-pages::settings.layout>

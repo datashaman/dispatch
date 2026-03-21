@@ -4,6 +4,7 @@ use App\Models\GitHubInstallation;
 use App\Models\Project;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Livewire\Volt\Volt;
 
@@ -12,6 +13,19 @@ uses(RefreshDatabase::class);
 beforeEach(function () {
     $this->user = User::factory()->create();
     $this->actingAs($this->user);
+    Cache::flush();
+
+    // Generate a fake RSA key for tests that need GitHubAppService
+    $key = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
+    openssl_pkey_export($key, $pem);
+    $this->fakeKeyPath = tempnam(sys_get_temp_dir(), 'gh_key_');
+    file_put_contents($this->fakeKeyPath, $pem);
+});
+
+afterEach(function () {
+    if (isset($this->fakeKeyPath) && file_exists($this->fakeKeyPath)) {
+        unlink($this->fakeKeyPath);
+    }
 });
 
 test('github settings page is accessible to authenticated users', function () {
@@ -37,13 +51,8 @@ test('github settings shows not configured when env vars are missing', function 
 });
 
 test('github settings shows connected when configured', function () {
-    $keyPath = tempnam(sys_get_temp_dir(), 'gh_key_');
-    $key = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
-    openssl_pkey_export($key, $pem);
-    file_put_contents($keyPath, $pem);
-
     config(['services.github.app_id' => '12345']);
-    config(['services.github.app_private_key_path' => $keyPath]);
+    config(['services.github.app_private_key_path' => $this->fakeKeyPath]);
 
     Http::fake([
         'api.github.com/app' => Http::response([
@@ -55,8 +64,6 @@ test('github settings shows connected when configured', function () {
     Volt::test('pages::settings.github')
         ->assertSee('Connected')
         ->assertSee('test-dispatch-app');
-
-    unlink($keyPath);
 });
 
 test('github settings appears in settings navigation', function () {
@@ -80,11 +87,97 @@ test('github settings shows installations list', function () {
         ->assertSee('Active');
 });
 
-test('github repos page is accessible', function () {
+test('github repos page shows repositories', function () {
+    config(['services.github.app_id' => '12345']);
+    config(['services.github.app_private_key_path' => $this->fakeKeyPath]);
     $installation = GitHubInstallation::factory()->create();
 
-    $this->get(route('github.repos', $installation))
-        ->assertStatus(200);
+    Http::fake([
+        'api.github.com/app/installations/*/access_tokens' => Http::response(['token' => 'fake-token']),
+        'api.github.com/installation/repositories*' => Http::response([
+            'total_count' => 2,
+            'repositories' => [
+                ['id' => 1, 'full_name' => 'org/public-repo', 'name' => 'public-repo', 'description' => 'A public repo', 'private' => false, 'language' => 'PHP'],
+                ['id' => 2, 'full_name' => 'org/private-repo', 'name' => 'private-repo', 'description' => 'A private repo', 'private' => true, 'language' => 'PHP'],
+            ],
+        ]),
+    ]);
+
+    Volt::test('pages::settings.github-repos', ['installation' => $installation])
+        ->assertSee('org/public-repo')
+        ->assertSee('org/private-repo')
+        ->assertSee('Private');
+});
+
+test('github repos search filters across all pages', function () {
+    config(['services.github.app_id' => '12345']);
+    config(['services.github.app_private_key_path' => $this->fakeKeyPath]);
+    $installation = GitHubInstallation::factory()->create();
+
+    Http::fake([
+        'api.github.com/app/installations/*/access_tokens' => Http::response(['token' => 'fake-token']),
+        'api.github.com/installation/repositories*' => Http::response([
+            'total_count' => 3,
+            'repositories' => [
+                ['id' => 1, 'full_name' => 'org/alpha', 'name' => 'alpha', 'description' => null, 'private' => false, 'language' => 'PHP'],
+                ['id' => 2, 'full_name' => 'org/beta', 'name' => 'beta', 'description' => null, 'private' => true, 'language' => 'PHP'],
+                ['id' => 3, 'full_name' => 'org/alphabetical', 'name' => 'alphabetical', 'description' => null, 'private' => false, 'language' => null],
+            ],
+        ]),
+    ]);
+
+    Volt::test('pages::settings.github-repos', ['installation' => $installation])
+        ->set('search', 'alpha')
+        ->assertSee('org/alpha')
+        ->assertSee('org/alphabetical')
+        ->assertDontSee('org/beta');
+});
+
+test('github repos search with no matches shows empty state', function () {
+    config(['services.github.app_id' => '12345']);
+    config(['services.github.app_private_key_path' => $this->fakeKeyPath]);
+    $installation = GitHubInstallation::factory()->create();
+
+    Http::fake([
+        'api.github.com/app/installations/*/access_tokens' => Http::response(['token' => 'fake-token']),
+        'api.github.com/installation/repositories*' => Http::response([
+            'total_count' => 1,
+            'repositories' => [
+                ['id' => 1, 'full_name' => 'org/some-repo', 'name' => 'some-repo', 'description' => null, 'private' => false, 'language' => null],
+            ],
+        ]),
+    ]);
+
+    Volt::test('pages::settings.github-repos', ['installation' => $installation])
+        ->set('search', 'nonexistent')
+        ->assertSee('No repositories match your search');
+});
+
+test('github repos sort changes order', function () {
+    config(['services.github.app_id' => '12345']);
+    config(['services.github.app_private_key_path' => $this->fakeKeyPath]);
+    $installation = GitHubInstallation::factory()->create();
+
+    Http::fake([
+        'api.github.com/app/installations/*/access_tokens' => Http::response(['token' => 'fake-token']),
+        'api.github.com/installation/repositories*' => Http::response([
+            'total_count' => 2,
+            'repositories' => [
+                ['id' => 1, 'full_name' => 'org/beta', 'name' => 'beta', 'description' => null, 'private' => false, 'language' => null, 'created_at' => '2025-01-01T00:00:00Z', 'updated_at' => '2025-06-01T00:00:00Z', 'pushed_at' => '2025-06-01T00:00:00Z'],
+                ['id' => 2, 'full_name' => 'org/alpha', 'name' => 'alpha', 'description' => null, 'private' => false, 'language' => null, 'created_at' => '2026-01-01T00:00:00Z', 'updated_at' => '2026-01-01T00:00:00Z', 'pushed_at' => '2026-01-01T00:00:00Z'],
+            ],
+        ]),
+    ]);
+
+    // Default sort (full_name asc) — alpha before beta
+    $component = Volt::test('pages::settings.github-repos', ['installation' => $installation]);
+    $html = $component->html();
+    expect(strpos($html, 'org/alpha'))->toBeLessThan(strpos($html, 'org/beta'));
+
+    // Descending — beta before alpha
+    $component->set('direction', 'desc');
+    $html = $component->html();
+    expect(strpos($html, 'org/beta'))->toBeLessThan(strpos($html, 'org/alpha'));
 });
 
 test('github repos page requires authentication', function () {
