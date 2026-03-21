@@ -119,10 +119,11 @@ test('detects mtime conflict on save', function () {
 
     $component = Volt::test('pages::config.index', ['project' => $this->project]);
 
-    // Simulate external modification by touching the file after loading
-    sleep(1);
-    touch($this->tempDir.'/dispatch.yml');
-    clearstatcache(true, $this->tempDir.'/dispatch.yml');
+    // Simulate external modification by explicitly advancing the file mtime
+    $filePath = $this->tempDir.'/dispatch.yml';
+    $originalMtime = filemtime($filePath);
+    touch($filePath, $originalMtime + 2);
+    clearstatcache(true, $filePath);
 
     $component
         ->call('saveConfig')

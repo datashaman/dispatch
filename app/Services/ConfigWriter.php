@@ -12,7 +12,6 @@ use Symfony\Component\Yaml\Yaml;
 class ConfigWriter
 {
     public function __construct(
-        private ConfigLoader $configLoader,
         private ConfigSyncer $configSyncer,
     ) {}
 
@@ -40,7 +39,12 @@ class ConfigWriter
         if (file_exists($filePath)) {
             clearstatcache(true, $filePath);
             $currentMtime = filemtime($filePath);
-            if ($currentMtime !== $loadedMtime && $loadedMtime > 0) {
+            if ($currentMtime === false) {
+                Log::warning('Failed to read mtime for dispatch.yml', [
+                    'project' => $project->repo,
+                    'path' => $filePath,
+                ]);
+            } elseif ($currentMtime !== $loadedMtime && $loadedMtime > 0) {
                 return [
                     'success' => false,
                     'message' => 'dispatch.yml was modified externally since you loaded it. Reload to see the latest version.',
@@ -51,7 +55,7 @@ class ConfigWriter
 
         $yaml = "---\n".$this->arrayToYaml($data);
 
-        $result = file_put_contents($filePath, $yaml);
+        $result = file_put_contents($filePath, $yaml, LOCK_EX);
 
         if ($result === false) {
             return [
@@ -100,7 +104,9 @@ class ConfigWriter
 
         clearstatcache(true, $filePath);
 
-        return filemtime($filePath);
+        $mtime = filemtime($filePath);
+
+        return $mtime === false ? null : $mtime;
     }
 
     /**
