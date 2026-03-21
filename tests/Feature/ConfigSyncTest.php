@@ -33,8 +33,6 @@ agent:
   instructions_file: "SPARKY.md"
   provider: "anthropic"
   model: "claude-sonnet-4-6"
-  secrets:
-    api_key: "ANTHROPIC_API_KEY"
 
 rules:
   - id: "analyze"
@@ -109,7 +107,6 @@ describe('import', function () {
         expect($project->agent_provider)->toBe('anthropic');
         expect($project->agent_model)->toBe('claude-sonnet-4-6');
         expect($project->agent_instructions_file)->toBe('SPARKY.md');
-        expect($project->agent_secrets)->toBe(['api_key' => 'ANTHROPIC_API_KEY']);
     });
 
     it('returns DispatchConfig with parsed rules', function () {

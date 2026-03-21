@@ -35,6 +35,15 @@ class LaravelAiExecutor implements Executor
 
             $provider = $agentConfig['provider'] ?? null;
             $model = $agentConfig['model'] ?? null;
+            $apiKey = $agentConfig['api_key'] ?? null;
+
+            // Inject per-project API key into provider config (safe: queue workers process one job at a time)
+            $originalKey = null;
+            if ($apiKey && $provider) {
+                $configKey = "ai.providers.{$provider}.key";
+                $originalKey = config($configKey);
+                config([$configKey => $apiKey]);
+            }
 
             Log::info('LaravelAiExecutor: starting execution', [
                 'agent_run_id' => $run->id,
@@ -117,6 +126,11 @@ class LaravelAiExecutor implements Executor
                 error: $e->getMessage(),
                 durationMs: $durationMs,
             );
+        } finally {
+            // Restore original provider key after execution
+            if (isset($configKey, $originalKey)) {
+                config([$configKey => $originalKey]);
+            }
         }
     }
 

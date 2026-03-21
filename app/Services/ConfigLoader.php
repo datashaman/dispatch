@@ -118,7 +118,6 @@ class ConfigLoader
             agentInstructionsFile: $agent['instructions_file'] ?? null,
             agentProvider: $agent['provider'] ?? null,
             agentModel: $agent['model'] ?? null,
-            secrets: $agent['secrets'] ?? null,
             cacheConfig: (bool) ($cache['config'] ?? false),
             rules: $rules,
         );

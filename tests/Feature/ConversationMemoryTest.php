@@ -3,14 +3,12 @@
 use App\Ai\Agents\DispatchAgent;
 use App\DataTransferObjects\DispatchConfig;
 use App\DataTransferObjects\RuleConfig;
-use App\Executors\ClaudeCliExecutor;
 use App\Executors\LaravelAiExecutor;
 use App\Jobs\ProcessAgentRun;
 use App\Models\AgentRun;
 use App\Models\Project;
 use App\Models\WebhookLog;
 use App\Services\ConversationMemory;
-use Illuminate\Support\Facades\Process;
 use Laravel\Ai\Contracts\Conversational;
 use Laravel\Ai\Messages\AssistantMessage;
 use Laravel\Ai\Messages\Message;
@@ -326,99 +324,6 @@ test('LaravelAiExecutor works without conversation history', function () {
     ]);
 
     expect($result->status)->toBe('success');
-});
-
-// --- ClaudeCliExecutor with conversation history ---
-
-test('ClaudeCliExecutor prepends conversation history to prompt', function () {
-    Process::fake([
-        '*' => Process::result(output: 'CLI response', exitCode: 0),
-    ]);
-
-    $webhookLog = WebhookLog::create([
-        'event_type' => 'push',
-        'repo' => 'owner/repo',
-        'payload' => [],
-        'status' => 'processed',
-        'created_at' => now(),
-    ]);
-
-    $agentRun = AgentRun::create([
-        'webhook_log_id' => $webhookLog->id,
-        'rule_id' => 'test-rule',
-        'status' => 'running',
-        'created_at' => now(),
-    ]);
-
-    $conversationHistory = [
-        ['role' => 'user', 'content' => 'Prior question'],
-        ['role' => 'assistant', 'content' => 'Prior answer'],
-    ];
-
-    $executor = new ClaudeCliExecutor;
-    $result = $executor->execute($agentRun, 'New question', [
-        'project_path' => '/tmp/test-project',
-    ], $conversationHistory);
-
-    expect($result->status)->toBe('success');
-
-    Process::assertRan(function ($process) {
-        $command = $process->command;
-        $promptIndex = array_search('--prompt', $command);
-
-        if ($promptIndex === false) {
-            return false;
-        }
-
-        $promptValue = $command[$promptIndex + 1];
-
-        return str_contains($promptValue, '## Prior Conversation History')
-            && str_contains($promptValue, 'Prior question')
-            && str_contains($promptValue, 'Prior answer')
-            && str_contains($promptValue, '## Current Request')
-            && str_contains($promptValue, 'New question');
-    });
-});
-
-test('ClaudeCliExecutor sends plain prompt without history', function () {
-    Process::fake([
-        '*' => Process::result(output: 'CLI response', exitCode: 0),
-    ]);
-
-    $webhookLog = WebhookLog::create([
-        'event_type' => 'push',
-        'repo' => 'owner/repo',
-        'payload' => [],
-        'status' => 'processed',
-        'created_at' => now(),
-    ]);
-
-    $agentRun = AgentRun::create([
-        'webhook_log_id' => $webhookLog->id,
-        'rule_id' => 'test-rule',
-        'status' => 'running',
-        'created_at' => now(),
-    ]);
-
-    $executor = new ClaudeCliExecutor;
-    $result = $executor->execute($agentRun, 'Simple prompt', [
-        'project_path' => '/tmp/test-project',
-    ]);
-
-    expect($result->status)->toBe('success');
-
-    Process::assertRan(function ($process) {
-        $command = $process->command;
-        $promptIndex = array_search('--prompt', $command);
-
-        if ($promptIndex === false) {
-            return false;
-        }
-
-        $promptValue = $command[$promptIndex + 1];
-
-        return $promptValue === 'Simple prompt';
-    });
 });
 
 // --- ProcessAgentRun with conversation memory ---

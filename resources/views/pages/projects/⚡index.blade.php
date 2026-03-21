@@ -465,7 +465,6 @@ new #[Title('Projects')] class extends Component {
                         <flux:select wire:model="editAgentExecutor">
                             <flux:select.option value="">{{ __('None') }}</flux:select.option>
                             <flux:select.option value="laravel-ai">{{ __('Laravel AI') }}</flux:select.option>
-                            <flux:select.option value="claude-cli">{{ __('Claude CLI') }}</flux:select.option>
                         </flux:select>
                     </flux:field>
 

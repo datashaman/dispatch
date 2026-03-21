@@ -7,7 +7,6 @@ use App\DataTransferObjects\DispatchConfig;
 use App\DataTransferObjects\OutputConfig;
 use App\DataTransferObjects\RuleConfig;
 use App\Events\AgentRunUpdated;
-use App\Executors\ClaudeCliExecutor;
 use App\Executors\LaravelAiExecutor;
 use App\Models\AgentRun;
 use App\Models\Project;
@@ -234,13 +233,7 @@ class ProcessAgentRun implements ShouldQueue
      */
     protected function resolveExecutor(): Executor
     {
-        $executor = $this->dispatchConfig->agentExecutor;
-
-        return match ($executor) {
-            'claude-cli' => app(ClaudeCliExecutor::class),
-            'laravel-ai' => app(LaravelAiExecutor::class),
-            default => app(LaravelAiExecutor::class),
-        };
+        return app(LaravelAiExecutor::class);
     }
 
     /**
@@ -252,9 +245,10 @@ class ProcessAgentRun implements ShouldQueue
     {
         $agent = $this->ruleConfig->agent;
         $output = $this->ruleConfig->output;
+        $provider = $agent?->provider ?? $this->dispatchConfig->agentProvider;
 
         return [
-            'provider' => $agent?->provider ?? $this->dispatchConfig->agentProvider,
+            'provider' => $provider,
             'model' => $agent?->model ?? $this->dispatchConfig->agentModel,
             'max_tokens' => $agent?->maxTokens,
             'max_steps' => $agent?->maxSteps,
@@ -265,7 +259,18 @@ class ProcessAgentRun implements ShouldQueue
             'project_path' => $this->project->path,
             'output_github_comment' => $output?->githubComment ?? false,
             'output_github_reaction' => $output?->githubReaction,
+            'api_key' => $this->resolveApiKey(),
         ];
+    }
+
+    /**
+     * Resolve the API key from the project's encrypted secrets.
+     */
+    protected function resolveApiKey(): ?string
+    {
+        $secrets = $this->project->agent_secrets;
+
+        return $secrets['api_key'] ?? null;
     }
 
     /**

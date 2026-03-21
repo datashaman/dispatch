@@ -31,7 +31,7 @@ class Project extends Model
     protected function casts(): array
     {
         return [
-            'agent_secrets' => 'array',
+            'agent_secrets' => 'encrypted:array',
             'cache_config' => 'boolean',
             'enabled' => 'boolean',
             'monthly_budget' => 'decimal:2',

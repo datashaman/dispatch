@@ -50,10 +50,6 @@ new #[Title('Project Detail')] class extends Component {
                     <flux:heading size="sm" class="mt-1">{{ $project->agent_name ?? '—' }}</flux:heading>
                 </div>
                 <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 p-4">
-                    <flux:text variant="subtle" class="text-xs uppercase tracking-wider">{{ __('Executor') }}</flux:text>
-                    <flux:heading size="sm" class="mt-1">{{ $project->agent_executor ?? '—' }}</flux:heading>
-                </div>
-                <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 p-4">
                     <flux:text variant="subtle" class="text-xs uppercase tracking-wider">{{ __('Provider') }}</flux:text>
                     <flux:heading size="sm" class="mt-1">{{ $project->agent_provider ?? '—' }}</flux:heading>
                 </div>
@@ -64,6 +60,10 @@ new #[Title('Project Detail')] class extends Component {
                 <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 p-4">
                     <flux:text variant="subtle" class="text-xs uppercase tracking-wider">{{ __('Instructions File') }}</flux:text>
                     <flux:heading size="sm" class="mt-1 font-mono text-sm">{{ $project->agent_instructions_file ?? '—' }}</flux:heading>
+                </div>
+                <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 p-4">
+                    <flux:text variant="subtle" class="text-xs uppercase tracking-wider">{{ __('API Key') }}</flux:text>
+                    <flux:heading size="sm" class="mt-1">{{ !empty($project->agent_secrets['api_key']) ? __('Configured') : __('Not set') }}</flux:heading>
                 </div>
                 <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 p-4">
                     <flux:text variant="subtle" class="text-xs uppercase tracking-wider">{{ __('Cache Config') }}</flux:text>

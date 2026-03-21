@@ -133,7 +133,6 @@ class ConfigWriter
                 'instructions_file' => $config->agentInstructionsFile,
                 'provider' => $config->agentProvider,
                 'model' => $config->agentModel,
-                'secrets' => $config->secrets,
             ], fn ($value) => $value !== null),
         ];
 

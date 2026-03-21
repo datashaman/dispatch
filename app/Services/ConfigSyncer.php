@@ -38,7 +38,6 @@ class ConfigSyncer
             'agent_provider' => $config->agentProvider,
             'agent_model' => $config->agentModel,
             'agent_instructions_file' => $config->agentInstructionsFile,
-            'agent_secrets' => $config->secrets,
             'cache_config' => $config->cacheConfig,
         ]);
     }

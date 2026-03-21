@@ -33,7 +33,7 @@ test('project has agent config columns', function () {
         'agent_provider' => 'anthropic',
         'agent_model' => 'claude-sonnet-4-6',
         'agent_instructions_file' => 'SPARKY.md',
-        'agent_secrets' => ['api_key' => 'ANTHROPIC_API_KEY'],
+        'agent_secrets' => ['api_key' => 'sk-test-key-123'],
     ]);
 
     expect($project->agent_name)->toBe('sparky')
@@ -41,7 +41,7 @@ test('project has agent config columns', function () {
         ->and($project->agent_provider)->toBe('anthropic')
         ->and($project->agent_model)->toBe('claude-sonnet-4-6')
         ->and($project->agent_instructions_file)->toBe('SPARKY.md')
-        ->and($project->agent_secrets)->toBe(['api_key' => 'ANTHROPIC_API_KEY']);
+        ->and($project->agent_secrets)->toBe(['api_key' => 'sk-test-key-123']);
 });
 
 test('filter operator enum has expected values', function () {
