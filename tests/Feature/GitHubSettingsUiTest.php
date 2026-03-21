@@ -14,6 +14,18 @@ beforeEach(function () {
     $this->user = User::factory()->create();
     $this->actingAs($this->user);
     Cache::flush();
+
+    // Generate a fake RSA key for tests that need GitHubAppService
+    $key = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
+    openssl_pkey_export($key, $pem);
+    $this->fakeKeyPath = tempnam(sys_get_temp_dir(), 'gh_key_');
+    file_put_contents($this->fakeKeyPath, $pem);
+});
+
+afterEach(function () {
+    if (isset($this->fakeKeyPath) && file_exists($this->fakeKeyPath)) {
+        unlink($this->fakeKeyPath);
+    }
 });
 
 test('github settings page is accessible to authenticated users', function () {
@@ -39,13 +51,8 @@ test('github settings shows not configured when env vars are missing', function 
 });
 
 test('github settings shows connected when configured', function () {
-    $keyPath = tempnam(sys_get_temp_dir(), 'gh_key_');
-    $key = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
-    openssl_pkey_export($key, $pem);
-    file_put_contents($keyPath, $pem);
-
     config(['services.github.app_id' => '12345']);
-    config(['services.github.app_private_key_path' => $keyPath]);
+    config(['services.github.app_private_key_path' => $this->fakeKeyPath]);
 
     Http::fake([
         'api.github.com/app' => Http::response([
@@ -57,8 +64,6 @@ test('github settings shows connected when configured', function () {
     Volt::test('pages::settings.github')
         ->assertSee('Connected')
         ->assertSee('test-dispatch-app');
-
-    unlink($keyPath);
 });
 
 test('github settings appears in settings navigation', function () {
@@ -83,6 +88,8 @@ test('github settings shows installations list', function () {
 });
 
 test('github repos page shows repositories', function () {
+    config(['services.github.app_id' => '12345']);
+    config(['services.github.app_private_key_path' => $this->fakeKeyPath]);
     $installation = GitHubInstallation::factory()->create();
 
     Http::fake([
@@ -103,6 +110,8 @@ test('github repos page shows repositories', function () {
 });
 
 test('github repos search filters across all pages', function () {
+    config(['services.github.app_id' => '12345']);
+    config(['services.github.app_private_key_path' => $this->fakeKeyPath]);
     $installation = GitHubInstallation::factory()->create();
 
     Http::fake([
@@ -125,6 +134,8 @@ test('github repos search filters across all pages', function () {
 });
 
 test('github repos search with no matches shows empty state', function () {
+    config(['services.github.app_id' => '12345']);
+    config(['services.github.app_private_key_path' => $this->fakeKeyPath]);
     $installation = GitHubInstallation::factory()->create();
 
     Http::fake([
@@ -143,6 +154,8 @@ test('github repos search with no matches shows empty state', function () {
 });
 
 test('github repos sort changes order', function () {
+    config(['services.github.app_id' => '12345']);
+    config(['services.github.app_private_key_path' => $this->fakeKeyPath]);
     $installation = GitHubInstallation::factory()->create();
 
     Http::fake([
@@ -155,8 +168,6 @@ test('github repos sort changes order', function () {
             ],
         ]),
     ]);
-
-    Cache::flush();
 
     // Default sort (full_name asc) — alpha before beta
     $component = Volt::test('pages::settings.github-repos', ['installation' => $installation]);
