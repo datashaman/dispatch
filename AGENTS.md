@@ -4,7 +4,7 @@ You are an AI agent working on the Dispatch project — a self-hosted webhook se
 
 ## Project Context
 
-- Laravel 12, PHP 8.5, Livewire/Volt UI, Tailwind CSS v4, Flux UI
+- Laravel 12, PHP 8.4, Livewire/Volt UI, Tailwind CSS v4, Flux UI
 - Laravel AI SDK (`laravel/ai`) for agent execution
 - Pest 4 for testing, SQLite for dev, Redis for queuing
 

@@ -18,7 +18,7 @@ Dispatch is a self-hosted webhook server that receives GitHub webhook events and
 
 ## Tech Stack
 
-- Laravel 12, PHP 8.5
+- Laravel 12, PHP 8.4
 - Livewire 4 / Volt (single-file components) for the UI
 - Flux UI (free tier) component library
 - Tailwind CSS v4
