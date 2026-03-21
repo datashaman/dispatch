@@ -55,7 +55,7 @@ Output Routing
 
 | Layer | Technology |
 |-------|-----------|
-| Backend | Laravel 12, PHP 8.5 |
+| Backend | Laravel 12, PHP 8.4 |
 | UI | Livewire 4, Volt, Flux UI, Tailwind CSS v4 |
 | AI | Laravel AI SDK (`laravel/ai`) |
 | Queue | Redis + Laravel Horizon |
