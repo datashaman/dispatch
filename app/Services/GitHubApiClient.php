@@ -123,6 +123,90 @@ class GitHubApiClient
     }
 
     /**
+     * Create or update a file in a repository via the Contents API.
+     *
+     * @return array{success: bool, message: string, commit_sha: ?string}
+     */
+    public function commitFile(string $repo, string $path, string $content, string $commitMessage, int $installationId, ?string $branch = null): array
+    {
+        try {
+            $request = $this->installationRequest($installationId);
+            $url = self::API_BASE."/repos/{$repo}/contents/{$path}";
+
+            // Get the existing file's SHA (required for updates)
+            $existingSha = null;
+            $query = $branch ? ['ref' => $branch] : [];
+
+            $existing = $request->get($url, $query);
+            if ($existing->successful()) {
+                $existingSha = $existing->json('sha');
+            } elseif ($existing->status() !== 404) {
+                Log::error('GitHubApiClient: failed to fetch existing file before commit', [
+                    'repo' => $repo,
+                    'path' => $path,
+                    'status' => $existing->status(),
+                    'error' => $existing->body(),
+                ]);
+
+                return [
+                    'success' => false,
+                    'message' => "GitHub API error fetching file ({$existing->status()}): {$existing->json('message', 'Unknown error')}",
+                    'commit_sha' => null,
+                ];
+            }
+
+            $payload = [
+                'message' => $commitMessage,
+                'content' => base64_encode($content),
+            ];
+
+            if ($existingSha) {
+                $payload['sha'] = $existingSha;
+            }
+
+            if ($branch) {
+                $payload['branch'] = $branch;
+            }
+
+            $response = $request->put($url, $payload);
+
+            if (! $response->successful()) {
+                Log::error('GitHubApiClient: failed to commit file', [
+                    'repo' => $repo,
+                    'path' => $path,
+                    'status' => $response->status(),
+                    'error' => $response->body(),
+                ]);
+
+                return [
+                    'success' => false,
+                    'message' => "GitHub API error ({$response->status()}): {$response->json('message', 'Unknown error')}",
+                    'commit_sha' => null,
+                ];
+            }
+
+            return [
+                'success' => true,
+                'message' => 'Committed to repository.',
+                'commit_sha' => $response->json('commit.sha'),
+            ];
+        } catch (\Throwable $e) {
+            Log::error('GitHubApiClient: exception committing file', [
+                'repo' => $repo,
+                'path' => $path,
+                'installation_id' => $installationId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'success' => false,
+                'message' => "Failed to commit: {$e->getMessage()}",
+                'commit_sha' => null,
+            ];
+        }
+    }
+
+    /**
      * Resolve the installation ID for a given repo.
      */
     public function resolveInstallationId(string $repo): ?int

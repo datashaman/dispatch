@@ -111,6 +111,75 @@ test('resolveInstallationId returns null when project not found', function () {
     expect($result)->toBeNull();
 });
 
+test('commitFile creates new file when it does not exist', function () {
+    Http::fake([
+        'api.github.com/repos/owner/repo/contents/dispatch.yml*' => Http::sequence()
+            ->push(['message' => 'Not Found'], 404)
+            ->push(['commit' => ['sha' => 'abc123'], 'content' => []], 201),
+    ]);
+
+    $client = app(GitHubApiClient::class);
+    $result = $client->commitFile('owner/repo', 'dispatch.yml', 'version: 1', 'chore: update config', 12345, 'my-branch');
+
+    expect($result['success'])->toBeTrue();
+    expect($result['commit_sha'])->toBe('abc123');
+
+    Http::assertSent(function ($request) {
+        return $request->method() === 'PUT'
+            && str_contains($request->url(), '/repos/owner/repo/contents/dispatch.yml')
+            && $request['message'] === 'chore: update config'
+            && $request['branch'] === 'my-branch'
+            && ! isset($request['sha']);
+    });
+});
+
+test('commitFile updates existing file with sha', function () {
+    Http::fake([
+        'api.github.com/repos/owner/repo/contents/dispatch.yml*' => Http::sequence()
+            ->push(['sha' => 'existing-sha-123', 'content' => ''], 200)
+            ->push(['commit' => ['sha' => 'new-commit-sha'], 'content' => []], 200),
+    ]);
+
+    $client = app(GitHubApiClient::class);
+    $result = $client->commitFile('owner/repo', 'dispatch.yml', 'version: 2', 'chore: update', 12345);
+
+    expect($result['success'])->toBeTrue();
+    expect($result['commit_sha'])->toBe('new-commit-sha');
+
+    Http::assertSent(function ($request) {
+        return $request->method() === 'PUT'
+            && $request['sha'] === 'existing-sha-123';
+    });
+});
+
+test('commitFile returns error on PUT failure', function () {
+    Http::fake([
+        'api.github.com/repos/owner/repo/contents/dispatch.yml*' => Http::sequence()
+            ->push(['message' => 'Not Found'], 404)
+            ->push(['message' => 'Conflict'], 409),
+    ]);
+
+    $client = app(GitHubApiClient::class);
+    $result = $client->commitFile('owner/repo', 'dispatch.yml', 'content', 'msg', 12345);
+
+    expect($result['success'])->toBeFalse();
+    expect($result['message'])->toContain('409');
+    expect($result['commit_sha'])->toBeNull();
+});
+
+test('commitFile returns error when GET fails with non-404', function () {
+    Http::fake([
+        'api.github.com/repos/owner/repo/contents/dispatch.yml*' => Http::response(['message' => 'Rate limited'], 429),
+    ]);
+
+    $client = app(GitHubApiClient::class);
+    $result = $client->commitFile('owner/repo', 'dispatch.yml', 'content', 'msg', 12345);
+
+    expect($result['success'])->toBeFalse();
+    expect($result['message'])->toContain('429');
+    expect($result['commit_sha'])->toBeNull();
+});
+
 test('requests include correct GitHub API headers', function () {
     Http::fake([
         'api.github.com/repos/owner/repo/issues/1/comments' => Http::response(['id' => 1], 201),
