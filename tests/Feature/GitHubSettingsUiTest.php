@@ -33,10 +33,10 @@ test('github settings shows not configured when env vars are missing', function 
 
     Volt::test('pages::settings.github')
         ->assertSee('Not Configured')
-        ->assertSee('Create GitHub App');
+        ->assertSee('Set GITHUB_APP_ID');
 });
 
-test('github settings shows installations when configured', function () {
+test('github settings shows connected when configured', function () {
     $keyPath = tempnam(sys_get_temp_dir(), 'gh_key_');
     $key = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
     openssl_pkey_export($key, $pem);
@@ -52,15 +52,9 @@ test('github settings shows installations when configured', function () {
         ]),
     ]);
 
-    GitHubInstallation::factory()->create([
-        'installation_id' => 12345,
-        'account_login' => 'my-org',
-        'account_type' => 'Organization',
-    ]);
-
     Volt::test('pages::settings.github')
-        ->assertSee('my-org')
-        ->assertSee('Organization');
+        ->assertSee('Connected')
+        ->assertSee('test-dispatch-app');
 
     unlink($keyPath);
 });

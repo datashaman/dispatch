@@ -15,37 +15,6 @@ class GitHubAppController extends Controller
     ) {}
 
     /**
-     * Handle the manifest flow callback — exchange code for credentials.
-     */
-    public function manifestCallback(Request $request): RedirectResponse
-    {
-        $code = $request->query('code');
-
-        if (! $code) {
-            return redirect()->route('github.settings')
-                ->with('error', 'No code received from GitHub. The manifest flow may have been cancelled.');
-        }
-
-        try {
-            $credentials = $this->gitHubAppService->exchangeManifestCode($code);
-            $this->gitHubAppService->storeCredentials($credentials);
-
-            // Sync installations right away
-            try {
-                $this->gitHubAppService->syncInstallations();
-            } catch (\Throwable) {
-                // App may not have any installations yet — that's fine
-            }
-
-            return redirect()->route('github.settings')
-                ->with('status', "GitHub App \"{$credentials['name']}\" created and configured successfully.");
-        } catch (\Throwable $e) {
-            return redirect()->route('github.settings')
-                ->with('error', "Failed to create GitHub App: {$e->getMessage()}");
-        }
-    }
-
-    /**
      * Handle the callback after a user installs or configures the GitHub App.
      */
     public function callback(Request $request): RedirectResponse
