@@ -40,6 +40,7 @@ Output Routing
 - **Agent tools** — Read, Edit, Write, Bash, Glob, Grep — the same tools used to build Dispatch itself
 - **Worktree isolation** — each agent run gets its own git worktree so concurrent jobs don't interfere
 - **`dispatch.yml`** — define rules in a YAML file in your repo; sync bidirectionally with the database
+- **Visual config editor** — build and edit rules with a form UI, live YAML preview, and mtime conflict detection
 - **Rule templates** — start from pre-built templates for common workflows (triage, review, implementation)
 - **GitHub App integration** — automated webhook setup, installation tokens, repo picker UI
 - **Prompt injection defense** — structural separation of untrusted webhook content from agent instructions
