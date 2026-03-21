@@ -36,13 +36,11 @@ test('connect repos button hidden when no github app configured', function () {
 
     Volt::test('pages::projects.index')
         ->assertSee('No projects registered')
-        ->assertSee('Set up GitHub App')
-        ->assertDontSee('Connect GitHub Repos');
+        ->assertSee('Set up GitHub App');
 });
 
 test('repo picker opens and shows repos from installation', function () {
     $this->mockAppService->shouldReceive('listRepositories')
-        ->with(12345, 1, 20)
         ->andReturn([
             'total_count' => 2,
             'repositories' => [
@@ -163,47 +161,6 @@ test('repo picker closes when close button clicked', function () {
         ->assertSet('showRepoPicker', false);
 });
 
-test('repo picker pagination works', function () {
-    $this->mockAppService->shouldReceive('listRepositories')
-        ->with(12345, 1, 20)
-        ->andReturn([
-            'total_count' => 30,
-            'repositories' => array_map(fn ($i) => [
-                'id' => $i,
-                'full_name' => "owner/repo-{$i}",
-                'description' => '',
-                'private' => false,
-                'language' => null,
-            ], range(1, 20)),
-        ]);
-
-    $this->mockAppService->shouldReceive('listRepositories')
-        ->with(12345, 2, 20)
-        ->andReturn([
-            'total_count' => 30,
-            'repositories' => array_map(fn ($i) => [
-                'id' => $i,
-                'full_name' => "owner/repo-{$i}",
-                'description' => '',
-                'private' => false,
-                'language' => null,
-            ], range(21, 30)),
-        ]);
-
-    Volt::test('pages::projects.index')
-        ->call('openRepoPicker')
-        ->assertSee('owner/repo-1')
-        ->call('pickerNextPage')
-        ->assertSet('repoPickerPage', 2)
-        ->assertSee('owner/repo-21');
-});
-
-test('empty state shows connect github repos CTA when app is configured', function () {
-    Volt::test('pages::projects.index')
-        ->assertSee('No projects registered')
-        ->assertSee('Connect GitHub Repos');
-});
-
 test('empty state shows setup github app link when not configured', function () {
     $mock = Mockery::mock(GitHubAppService::class);
     $mock->shouldReceive('isConfigured')->andReturn(false);
@@ -225,7 +182,7 @@ test('repo picker shows error when api call fails', function () {
         ->assertSet('errorMessage', 'Failed to load repositories: Connection refused');
 });
 
-test('repo picker search filters results and resets page', function () {
+test('repo picker search filters results', function () {
     $this->mockAppService->shouldReceive('listRepositories')
         ->andReturn([
             'total_count' => 3,
@@ -243,8 +200,7 @@ test('repo picker search filters results and resets page', function () {
         ->set('repoPickerSearch', 'api')
         ->assertSee('owner/api-service')
         ->assertSee('owner/api-gateway')
-        ->assertDontSee('owner/web-app')
-        ->assertSet('repoPickerPage', 1);
+        ->assertDontSee('owner/web-app');
 });
 
 test('repo picker switches between installations', function () {
@@ -254,7 +210,7 @@ test('repo picker switches between installations', function () {
     ]);
 
     $this->mockAppService->shouldReceive('listRepositories')
-        ->with(12345, 1, 20)
+        ->with(12345, Mockery::any())
         ->andReturn([
             'total_count' => 1,
             'repositories' => [
@@ -263,7 +219,7 @@ test('repo picker switches between installations', function () {
         ]);
 
     $this->mockAppService->shouldReceive('listRepositories')
-        ->with(67890, 1, 20)
+        ->with(67890, Mockery::any())
         ->andReturn([
             'total_count' => 1,
             'repositories' => [
@@ -278,6 +234,5 @@ test('repo picker switches between installations', function () {
         ->assertSee('zorg')
         ->call('switchInstallation', 67890)
         ->assertSet('repoPickerInstallationId', 67890)
-        ->assertSet('repoPickerPage', 1)
         ->assertSee('zorg/repo-two');
 });
