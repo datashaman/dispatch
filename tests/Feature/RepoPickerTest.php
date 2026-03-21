@@ -99,24 +99,79 @@ test('can connect a repo from the picker', function () {
         ],
     ]);
 
-    $this->mockAppService->shouldReceive('getInstallationToken')
-        ->with(12345)
-        ->andReturn('fake-token');
-
     Process::fake([
         'git clone *' => Process::result(output: 'Cloning into...', exitCode: 0),
     ]);
 
+    try {
+        Volt::test('pages::projects.index')
+            ->call('openRepoPicker')
+            ->call('connectRepo', 'owner/new-repo', $this->installation->id);
+
+        $expectedPath = storage_path('repos/owner/new-repo');
+
+        Process::assertRan(function ($process) use ($expectedPath) {
+            $command = is_array($process->command) ? implode(' ', $process->command) : $process->command;
+
+            return str_contains($command, 'git clone')
+                && str_contains($command, $expectedPath);
+        });
+
+        $project = Project::where('repo', 'owner/new-repo')->first();
+        expect($project)->not->toBeNull();
+        expect($project->path)->toBe($expectedPath);
+        expect($project->github_installation_id)->toBe($this->installation->id);
+    } finally {
+        File::deleteDirectory(storage_path('repos/owner/new-repo'));
+    }
+});
+
+test('connect repo skips cloning if directory already exists', function () {
+    $this->mockAppService->shouldReceive('listRepositories')->andReturn([
+        'total_count' => 1,
+        'repositories' => [
+            ['id' => 1, 'full_name' => 'owner/new-repo', 'description' => '', 'private' => false, 'language' => null],
+        ],
+    ]);
+
+    $repoPath = storage_path('repos/owner/new-repo');
+    File::ensureDirectoryExists($repoPath);
+
+    Process::fake();
+
+    try {
+        Volt::test('pages::projects.index')
+            ->call('openRepoPicker')
+            ->call('connectRepo', 'owner/new-repo', $this->installation->id);
+
+        Process::assertDidntRun('git clone *');
+
+        $project = Project::where('repo', 'owner/new-repo')->first();
+        expect($project)->not->toBeNull();
+        expect($project->path)->toBe($repoPath);
+    } finally {
+        File::deleteDirectory(storage_path('repos/owner/new-repo'));
+    }
+});
+
+test('connect repo shows error on clone failure', function () {
+    $this->mockAppService->shouldReceive('listRepositories')->andReturn([
+        'total_count' => 1,
+        'repositories' => [
+            ['id' => 1, 'full_name' => 'owner/new-repo', 'description' => '', 'private' => false, 'language' => null],
+        ],
+    ]);
+
+    Process::fake([
+        'git clone *' => Process::result(output: '', errorOutput: 'fatal: repository not found', exitCode: 128),
+    ]);
+
     Volt::test('pages::projects.index')
         ->call('openRepoPicker')
-        ->call('connectRepo', 'owner/new-repo', $this->installation->id);
+        ->call('connectRepo', 'owner/new-repo', $this->installation->id)
+        ->assertSet('errorMessage', fn ($v) => str_contains($v, 'Failed to clone'));
 
-    $project = Project::where('repo', 'owner/new-repo')->first();
-    expect($project)->not->toBeNull();
-    expect($project->path)->toBe(storage_path('repos/owner/new-repo'));
-    expect($project->github_installation_id)->toBe($this->installation->id);
-
-    File::deleteDirectory(storage_path('repos/owner'));
+    expect(Project::where('repo', 'owner/new-repo')->exists())->toBeFalse();
 });
 
 test('connect repo prevents duplicates', function () {
