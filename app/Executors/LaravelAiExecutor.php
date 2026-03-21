@@ -38,6 +38,7 @@ class LaravelAiExecutor implements Executor
             $apiKey = $agentConfig['api_key'] ?? null;
 
             // Inject per-project API key into provider config (safe: queue workers process one job at a time)
+            $configKey = null;
             $originalKey = null;
             if ($apiKey && $provider) {
                 $configKey = "ai.providers.{$provider}.key";
@@ -128,7 +129,7 @@ class LaravelAiExecutor implements Executor
             );
         } finally {
             // Restore original provider key after execution
-            if (isset($configKey, $originalKey)) {
+            if ($configKey !== null) {
                 config([$configKey => $originalKey]);
             }
         }
