@@ -543,8 +543,8 @@ new #[Title('Projects')] class extends Component {
                                     <flux:badge color="zinc" size="sm">{{ __('Paused') }}</flux:badge>
                                 @endif
                             </flux:button>
-                            <flux:button variant="ghost" size="sm" icon="bolt" :href="route('rules.index', $project)" wire:navigate>
-                                {{ __('Rules') }}
+                            <flux:button variant="ghost" size="sm" icon="cog-6-tooth" :href="route('config.index', $project)" wire:navigate>
+                                {{ __('Config') }}
                             </flux:button>
                             <flux:button variant="ghost" size="sm" icon="pencil-square" wire:click="editProject({{ $project->id }})">
                                 {{ __('Edit') }}
