@@ -37,6 +37,7 @@ Dispatch is a self-hosted webhook server that receives GitHub webhook events and
 | `PipelineOrchestrator` | Orchestrates multi-agent pipelines with `depends_on` |
 | `ConversationMemory` | Thread-based conversation memory for agent continuity |
 | `ConfigSyncer` | Bidirectional sync between `dispatch.yml` and database |
+| `ConfigWriter` | Writes config arrays to YAML, saves with mtime conflict detection and DB sync |
 | `GitHubAppService` | JWT auth, installation tokens, repo listing, manifest flow |
 | `OutputHandler` | Routes agent output via source-specific OutputAdapters (with legacy fallback) |
 | `GitHubApiClient` | HTTP client for GitHub API using installation tokens |

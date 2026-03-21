@@ -222,7 +222,7 @@ new #[Title('Projects')] class extends Component {
             app(DefaultRulesService::class)->seed($project);
 
             unset($this->registeredRepos, $this->pickerRepos);
-            $this->statusMessage = "Connected: {$fullName}";
+            $this->redirect(route('config.index', $project), navigate: true);
         } catch (\Throwable $e) {
             $this->errorMessage = "Failed to connect {$fullName}: {$e->getMessage()}";
         }

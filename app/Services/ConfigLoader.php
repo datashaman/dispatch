@@ -84,7 +84,7 @@ class ConfigLoader
      *
      * @param  array<string, mixed>  $data
      */
-    private function validate(array $data, string $filePath): DispatchConfig
+    public function validate(array $data, string $filePath): DispatchConfig
     {
         $this->requireField($data, 'version', $filePath);
         $this->requireField($data, 'agent', $filePath);
