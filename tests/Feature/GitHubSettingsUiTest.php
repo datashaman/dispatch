@@ -33,7 +33,7 @@ test('github settings shows not configured when env vars are missing', function 
 
     Volt::test('pages::settings.github')
         ->assertSee('Not Configured')
-        ->assertSee('Create GitHub App');
+        ->assertSee('Set GITHUB_APP_ID');
 });
 
 test('github settings shows installations when configured', function () {
