@@ -1,15 +1,33 @@
 <?php
 
 use App\DataTransferObjects\DispatchConfig;
+use App\Models\GitHubInstallation;
 use App\Models\Project;
 use App\Models\User;
 use App\Services\ConfigSyncer;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Http;
 use Livewire\Volt\Volt;
+
+uses(RefreshDatabase::class);
 
 beforeEach(function () {
     $this->user = User::factory()->create();
     $this->actingAs($this->user);
+    Cache::flush();
+
+    $key = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
+    openssl_pkey_export($key, $pem);
+    $this->fakeKeyPath = tempnam(sys_get_temp_dir(), 'gh_key_');
+    file_put_contents($this->fakeKeyPath, $pem);
+});
+
+afterEach(function () {
+    if (isset($this->fakeKeyPath) && file_exists($this->fakeKeyPath)) {
+        unlink($this->fakeKeyPath);
+    }
 });
 
 test('projects page is accessible to authenticated users', function () {
@@ -224,4 +242,60 @@ test('project show page displays project details', function () {
 test('project show page handles missing project', function () {
     Volt::test('pages::projects.show', ['project' => 99999])
         ->assertSee('Project not found');
+});
+
+test('repo picker search filters across all repos', function () {
+    config(['services.github.app_id' => '12345']);
+    config(['services.github.app_private_key' => null]);
+    config(['services.github.app_private_key_path' => $this->fakeKeyPath]);
+    $installation = GitHubInstallation::factory()->create();
+
+    Http::fake([
+        'api.github.com/app/installations/*/access_tokens' => Http::response(['token' => 'fake-token']),
+        'api.github.com/installation/repositories*' => Http::response([
+            'total_count' => 3,
+            'repositories' => [
+                ['id' => 1, 'full_name' => 'org/alpha', 'name' => 'alpha', 'description' => null, 'private' => false, 'language' => 'PHP'],
+                ['id' => 2, 'full_name' => 'org/beta', 'name' => 'beta', 'description' => null, 'private' => true, 'language' => 'PHP'],
+                ['id' => 3, 'full_name' => 'org/alphabetical', 'name' => 'alphabetical', 'description' => null, 'private' => false, 'language' => null],
+            ],
+        ]),
+    ]);
+
+    Volt::test('pages::projects.index')
+        ->call('openRepoPicker', $installation->installation_id)
+        ->assertSee('org/alpha')
+        ->assertSee('org/beta')
+        ->set('repoPickerSearch', 'alpha')
+        ->assertSee('org/alpha')
+        ->assertSee('org/alphabetical')
+        ->assertDontSee('org/beta');
+});
+
+test('repo picker sort changes order', function () {
+    config(['services.github.app_id' => '12345']);
+    config(['services.github.app_private_key' => null]);
+    config(['services.github.app_private_key_path' => $this->fakeKeyPath]);
+    $installation = GitHubInstallation::factory()->create();
+
+    Http::fake([
+        'api.github.com/app/installations/*/access_tokens' => Http::response(['token' => 'fake-token']),
+        'api.github.com/installation/repositories*' => Http::response([
+            'total_count' => 2,
+            'repositories' => [
+                ['id' => 1, 'full_name' => 'org/beta', 'name' => 'beta', 'description' => null, 'private' => false, 'language' => null],
+                ['id' => 2, 'full_name' => 'org/alpha', 'name' => 'alpha', 'description' => null, 'private' => false, 'language' => null],
+            ],
+        ]),
+    ]);
+
+    $component = Volt::test('pages::projects.index')
+        ->call('openRepoPicker', $installation->installation_id);
+
+    $html = $component->html();
+    expect(strpos($html, 'org/alpha'))->toBeLessThan(strpos($html, 'org/beta'));
+
+    $component->set('repoPickerDirection', 'desc');
+    $html = $component->html();
+    expect(strpos($html, 'org/beta'))->toBeLessThan(strpos($html, 'org/alpha'));
 });

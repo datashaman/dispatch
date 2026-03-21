@@ -5,6 +5,7 @@ use App\Models\Project;
 use App\Services\ConfigSyncer;
 use App\Services\DefaultRulesService;
 use App\Services\GitHubAppService;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Livewire\Attributes\Computed;
@@ -31,9 +32,9 @@ new #[Title('Projects')] class extends Component {
 
     // Repo picker state
     public bool $showRepoPicker = false;
-    public int $repoPickerPage = 1;
-    public int $repoPickerTotalCount = 0;
     public string $repoPickerSearch = '';
+    public string $repoPickerSort = 'full_name';
+    public string $repoPickerDirection = 'asc';
     public ?int $repoPickerInstallationId = null;
     public bool $showRegisterModal = false;
     public string $registerRepo = '';
@@ -96,6 +97,34 @@ new #[Title('Projects')] class extends Component {
         return Project::pluck('repo')->toArray();
     }
 
+    protected function allPickerRepos(): array
+    {
+        if (! $this->repoPickerInstallationId) {
+            return [];
+        }
+
+        return Cache::remember(
+            "github_repos_{$this->repoPickerInstallationId}",
+            300,
+            function (): array {
+                $service = app(GitHubAppService::class);
+                $repos = [];
+                $page = 1;
+
+                do {
+                    $result = $service->listRepositories(
+                        $this->repoPickerInstallationId,
+                        $page,
+                    );
+                    $repos = array_merge($repos, $result['repositories'] ?? []);
+                    $page++;
+                } while (count($result['repositories'] ?? []) === 100);
+
+                return $repos;
+            },
+        );
+    }
+
     #[Computed]
     public function pickerRepos(): array
     {
@@ -104,32 +133,29 @@ new #[Title('Projects')] class extends Component {
         }
 
         try {
-            $result = app(GitHubAppService::class)->listRepositories(
-                $this->repoPickerInstallationId,
-                $this->repoPickerPage,
-                20,
-            );
+            $allRepos = $this->allPickerRepos();
 
-            $this->repoPickerTotalCount = $result['total_count'] ?? 0;
-            $repos = $result['repositories'] ?? [];
-
-            if ($this->repoPickerSearch) {
-                $search = strtolower($this->repoPickerSearch);
-                $repos = array_values(array_filter($repos, fn ($r) => str_contains(strtolower($r['full_name']), $search)));
+            if ($this->repoPickerSearch !== '') {
+                $allRepos = array_values(array_filter($allRepos, function (array $repo): bool {
+                    return stripos($repo['full_name'], $this->repoPickerSearch) !== false
+                        || stripos($repo['description'] ?? '', $this->repoPickerSearch) !== false;
+                }));
             }
 
-            return $repos;
+            usort($allRepos, function (array $a, array $b): int {
+                $valA = $a[$this->repoPickerSort] ?? '';
+                $valB = $b[$this->repoPickerSort] ?? '';
+                $cmp = strnatcasecmp((string) $valA, (string) $valB);
+
+                return $this->repoPickerDirection === 'desc' ? -$cmp : $cmp;
+            });
+
+            return $allRepos;
         } catch (\Throwable $e) {
             $this->errorMessage = "Failed to load repositories: {$e->getMessage()}";
 
             return [];
         }
-    }
-
-    #[Computed]
-    public function pickerTotalPages(): int
-    {
-        return max(1, (int) ceil($this->repoPickerTotalCount / 20));
     }
 
     public function openRepoPicker(?int $installationId = null): void
@@ -143,8 +169,9 @@ new #[Title('Projects')] class extends Component {
         }
 
         $this->repoPickerInstallationId = $installationId ?? $installations->first()->installation_id;
-        $this->repoPickerPage = 1;
         $this->repoPickerSearch = '';
+        $this->repoPickerSort = 'full_name';
+        $this->repoPickerDirection = 'asc';
         $this->showRepoPicker = true;
         unset($this->pickerRepos);
     }
@@ -157,29 +184,21 @@ new #[Title('Projects')] class extends Component {
     public function switchInstallation(int $installationId): void
     {
         $this->repoPickerInstallationId = $installationId;
-        $this->repoPickerPage = 1;
         unset($this->pickerRepos);
-    }
-
-    public function pickerPreviousPage(): void
-    {
-        if ($this->repoPickerPage > 1) {
-            $this->repoPickerPage--;
-            unset($this->pickerRepos);
-        }
-    }
-
-    public function pickerNextPage(): void
-    {
-        if ($this->repoPickerPage < $this->pickerTotalPages) {
-            $this->repoPickerPage++;
-            unset($this->pickerRepos);
-        }
     }
 
     public function updatedRepoPickerSearch(): void
     {
-        $this->repoPickerPage = 1;
+        unset($this->pickerRepos);
+    }
+
+    public function updatedRepoPickerSort(): void
+    {
+        unset($this->pickerRepos);
+    }
+
+    public function updatedRepoPickerDirection(): void
+    {
         unset($this->pickerRepos);
     }
 
@@ -379,8 +398,19 @@ new #[Title('Projects')] class extends Component {
                 </div>
             @endif
 
-            {{-- Search --}}
-            <flux:input wire:model.live.debounce.300ms="repoPickerSearch" placeholder="Search repositories..." icon="magnifying-glass" size="sm" />
+            {{-- Search & Sort --}}
+            <div class="flex items-center gap-2">
+                <div class="flex-1">
+                    <flux:input wire:model.live.debounce.300ms="repoPickerSearch" placeholder="Search repositories..." icon="magnifying-glass" size="sm" clearable />
+                </div>
+                <flux:select wire:model.live="repoPickerSort" class="w-32" size="sm">
+                    <flux:select.option value="full_name">{{ __('Name') }}</flux:select.option>
+                    <flux:select.option value="created_at">{{ __('Created') }}</flux:select.option>
+                    <flux:select.option value="updated_at">{{ __('Updated') }}</flux:select.option>
+                    <flux:select.option value="pushed_at">{{ __('Pushed') }}</flux:select.option>
+                </flux:select>
+                <flux:button variant="ghost" size="sm" wire:click="$set('repoPickerDirection', '{{ $repoPickerDirection === 'asc' ? 'desc' : 'asc' }}')" icon="{{ $repoPickerDirection === 'asc' ? 'bars-arrow-up' : 'bars-arrow-down' }}" />
+            </div>
 
             {{-- Repo list --}}
             <div class="space-y-1" wire:loading.class="opacity-50">
@@ -422,21 +452,11 @@ new #[Title('Projects')] class extends Component {
                 @endforelse
             </div>
 
-            {{-- Pagination --}}
-            @if ($this->pickerTotalPages > 1)
-                <div class="flex items-center justify-between pt-1">
-                    <flux:text class="text-xs text-zinc-500">
-                        {{ __('Page :current of :total (:count repos)', ['current' => $repoPickerPage, 'total' => $this->pickerTotalPages, 'count' => $repoPickerTotalCount]) }}
-                    </flux:text>
-                    <div class="flex gap-1">
-                        <flux:button variant="ghost" size="sm" wire:click="pickerPreviousPage" :disabled="$repoPickerPage <= 1">
-                            {{ __('Prev') }}
-                        </flux:button>
-                        <flux:button variant="ghost" size="sm" wire:click="pickerNextPage" :disabled="$repoPickerPage >= $this->pickerTotalPages">
-                            {{ __('Next') }}
-                        </flux:button>
-                    </div>
-                </div>
+            {{-- Repo count --}}
+            @if (count($this->pickerRepos) > 0)
+                <flux:text class="text-xs text-zinc-500">
+                    {{ count($this->pickerRepos) }} {{ __('repositories') }}
+                </flux:text>
             @endif
         </div>
     @endif
@@ -580,11 +600,7 @@ new #[Title('Projects')] class extends Component {
             <flux:icon name="folder" class="mx-auto h-12 w-12 text-zinc-400" />
             <flux:heading size="lg" class="mt-4">{{ __('No projects registered') }}</flux:heading>
             <flux:text class="mt-2">{{ __('Add a project to get started with webhook dispatch.') }}</flux:text>
-            @if ($this->isGitHubAppConfigured && $this->installations->isNotEmpty())
-                <flux:button variant="primary" class="mt-4" icon="cloud" wire:click="openRepoPicker">
-                    {{ __('Connect GitHub Repos') }}
-                </flux:button>
-            @elseif (! $this->isGitHubAppConfigured)
+            @if (! $this->isGitHubAppConfigured)
                 <flux:button variant="ghost" class="mt-4" icon="cog-6-tooth" :href="route('github.settings')" wire:navigate>
                     {{ __('Set up GitHub App') }}
                 </flux:button>
