@@ -23,6 +23,7 @@ class Project extends Model
         'agent_instructions_file',
         'agent_secrets',
         'cache_config',
+        'enabled',
         'monthly_budget',
         'github_installation_id',
     ];
@@ -32,6 +33,7 @@ class Project extends Model
         return [
             'agent_secrets' => 'array',
             'cache_config' => 'boolean',
+            'enabled' => 'boolean',
             'monthly_budget' => 'decimal:2',
         ];
     }

@@ -307,6 +307,15 @@ new #[Title('Projects')] class extends Component {
         }
     }
 
+    public function toggleEnabled(int $id): void
+    {
+        $project = Project::findOrFail($id);
+        $project->update(['enabled' => ! $project->enabled]);
+        $this->statusMessage = $project->enabled
+            ? "{$project->repo} is now live."
+            : "{$project->repo} is now paused.";
+    }
+
 }; ?>
 
 <section class="w-full">
@@ -527,6 +536,13 @@ new #[Title('Projects')] class extends Component {
                         </div>
 
                         <div class="flex items-center gap-1">
+                            <flux:button variant="ghost" size="sm" wire:click="toggleEnabled({{ $project->id }})">
+                                @if ($project->enabled)
+                                    <flux:badge color="green" size="sm">{{ __('Live') }}</flux:badge>
+                                @else
+                                    <flux:badge color="zinc" size="sm">{{ __('Paused') }}</flux:badge>
+                                @endif
+                            </flux:button>
                             <flux:button variant="ghost" size="sm" icon="bolt" :href="route('rules.index', $project)" wire:navigate>
                                 {{ __('Rules') }}
                             </flux:button>
