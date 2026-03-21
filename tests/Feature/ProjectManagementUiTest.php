@@ -60,7 +60,7 @@ test('lists all registered projects', function () {
         ->assertSee('/tmp/repo-b');
 });
 
-test('shows empty state when no projects exist', function () {
+test('shows empty state when no repos connected', function () {
     Volt::test('pages::projects.index')
         ->assertSee('No repos connected');
 });

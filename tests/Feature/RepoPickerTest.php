@@ -34,9 +34,12 @@ test('connect repos button hidden when no github app configured', function () {
 
     GitHubInstallation::query()->delete();
 
-    Volt::test('pages::projects.index')
+    $component = Volt::test('pages::projects.index')
         ->assertSee('No repos connected')
         ->assertSee('Set up GitHub App');
+
+    // The Connect Repos button should not be in the rendered HTML
+    expect(str_contains($component->html(), 'wire:click="openRepoPicker"'))->toBeFalse();
 });
 
 test('repo picker opens and shows repos from installation', function () {
