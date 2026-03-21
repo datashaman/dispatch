@@ -747,26 +747,32 @@ new #[Title('Config Editor')] class extends Component {
                                                     </flux:button>
                                                 </div>
                                                 @foreach ($rule['filters'] ?? [] as $filterIndex => $filter)
-                                                    <div class="grid grid-cols-[1fr_auto_1fr_auto] gap-2 mb-2 items-end" wire:key="filter-{{ $ruleIndex }}-{{ $filterIndex }}">
-                                                        <flux:input
-                                                            wire:model.live.debounce.300ms="configData.rules.{{ $ruleIndex }}.filters.{{ $filterIndex }}.field"
-                                                            placeholder="event.action"
-                                                            size="sm"
-                                                        />
-                                                        <flux:select
-                                                            wire:model.live="configData.rules.{{ $ruleIndex }}.filters.{{ $filterIndex }}.operator"
-                                                            size="sm"
-                                                        >
-                                                            @foreach ($this->filterOperators as $op)
-                                                                <option value="{{ $op['value'] }}">{{ $op['label'] }}</option>
-                                                            @endforeach
-                                                        </flux:select>
-                                                        <flux:input
-                                                            wire:model.live.debounce.300ms="configData.rules.{{ $ruleIndex }}.filters.{{ $filterIndex }}.value"
-                                                            placeholder="value"
-                                                            size="sm"
-                                                        />
-                                                        <flux:button size="sm" variant="ghost" class="text-red-500" wire:click="removeFilter({{ $ruleIndex }}, {{ $filterIndex }})">
+                                                    <div class="flex items-end gap-2 mb-2" wire:key="filter-{{ $ruleIndex }}-{{ $filterIndex }}">
+                                                        <div class="flex-1 min-w-0">
+                                                            <flux:input
+                                                                wire:model.live.debounce.300ms="configData.rules.{{ $ruleIndex }}.filters.{{ $filterIndex }}.field"
+                                                                placeholder="event.action"
+                                                                size="sm"
+                                                            />
+                                                        </div>
+                                                        <div class="w-32 shrink-0">
+                                                            <flux:select
+                                                                wire:model.live="configData.rules.{{ $ruleIndex }}.filters.{{ $filterIndex }}.operator"
+                                                                size="sm"
+                                                            >
+                                                                @foreach ($this->filterOperators as $op)
+                                                                    <option value="{{ $op['value'] }}">{{ $op['label'] }}</option>
+                                                                @endforeach
+                                                            </flux:select>
+                                                        </div>
+                                                        <div class="flex-1 min-w-0">
+                                                            <flux:input
+                                                                wire:model.live.debounce.300ms="configData.rules.{{ $ruleIndex }}.filters.{{ $filterIndex }}.value"
+                                                                placeholder="value"
+                                                                size="sm"
+                                                            />
+                                                        </div>
+                                                        <flux:button size="sm" variant="ghost" class="text-red-500 shrink-0" wire:click="removeFilter({{ $ruleIndex }}, {{ $filterIndex }})">
                                                             ✕
                                                         </flux:button>
                                                     </div>

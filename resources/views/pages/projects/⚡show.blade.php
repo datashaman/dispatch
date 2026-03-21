@@ -35,8 +35,8 @@ new #[Title('Project Detail')] class extends Component {
                 <flux:button variant="ghost" icon="arrow-left" :href="route('projects.index')" wire:navigate>
                     {{ __('Back') }}
                 </flux:button>
-                <flux:button variant="primary" icon="bolt" :href="route('rules.index', $project)" wire:navigate>
-                    {{ __('Manage Rules') }}
+                <flux:button variant="primary" icon="cog-6-tooth" :href="route('config.index', $project)" wire:navigate>
+                    {{ __('Config Editor') }}
                 </flux:button>
             </div>
         </div>
