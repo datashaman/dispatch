@@ -3,12 +3,14 @@
 use App\DataTransferObjects\RuleConfig;
 use App\Models\Project;
 use App\Services\ConfigLoader;
+use App\Services\DefaultRulesService;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
 new #[Title('Rules')] class extends Component {
     public int $projectId;
+    public string $statusMessage = '';
     public string $errorMessage = '';
     public ?string $expandedRuleId = null;
 
@@ -38,6 +40,22 @@ new #[Title('Rules')] class extends Component {
     public function getEvents(): array
     {
         return config('dispatch.events', []);
+    }
+
+    public function generateDefaultRules(): void
+    {
+        try {
+            $seeded = app(DefaultRulesService::class)->seed($this->project);
+
+            if ($seeded) {
+                unset($this->config);
+                $this->statusMessage = 'Default rules generated. You can edit dispatch.yml to customize them.';
+            } else {
+                $this->errorMessage = 'dispatch.yml already exists.';
+            }
+        } catch (\Throwable $e) {
+            $this->errorMessage = "Failed to generate rules: {$e->getMessage()}";
+        }
     }
 
     public function toggleExpand(string $ruleId): void
@@ -92,6 +110,12 @@ new #[Title('Rules')] class extends Component {
         </flux:button>
     </div>
 
+    @if ($statusMessage)
+        <flux:callout variant="success" class="mb-4">
+            {{ $statusMessage }}
+        </flux:callout>
+    @endif
+
     @if ($errorMessage)
         <flux:callout variant="danger" class="mb-4">
             {{ $errorMessage }}
@@ -102,7 +126,10 @@ new #[Title('Rules')] class extends Component {
         <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 p-8 text-center">
             <flux:icon name="document-text" class="mx-auto h-12 w-12 text-zinc-400" />
             <flux:heading size="lg" class="mt-4">{{ __('No dispatch.yml found') }}</flux:heading>
-            <flux:text class="mt-2">{{ __('Create a dispatch.yml file in the project root to define rules.') }}</flux:text>
+            <flux:text class="mt-2">{{ __('Generate a starter config with default rules for issue triage, implementation, Q&A, and code review.') }}</flux:text>
+            <flux:button variant="primary" class="mt-4" icon="bolt" wire:click="generateDefaultRules">
+                {{ __('Generate Default Rules') }}
+            </flux:button>
         </div>
     @elseif ($this->config)
         {{-- Agent Defaults --}}
