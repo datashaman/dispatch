@@ -31,7 +31,6 @@ new #[Title('Browse Repositories')] class extends Component {
             $result = app(GitHubAppService::class)->listRepositories(
                 $this->installation->installation_id,
                 $this->page,
-                30,
             );
 
             $this->totalCount = $result['total_count'] ?? 0;
@@ -53,7 +52,7 @@ new #[Title('Browse Repositories')] class extends Component {
     #[Computed]
     public function totalPages(): int
     {
-        return max(1, (int) ceil($this->totalCount / 30));
+        return max(1, (int) ceil($this->totalCount / 100));
     }
 
     public function previousPage(): void

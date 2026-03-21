@@ -86,7 +86,7 @@ class GitHubAppService
      *
      * @return array<int, array<string, mixed>>
      */
-    public function listRepositories(int $installationId, int $page = 1, int $perPage = 30): array
+    public function listRepositories(int $installationId, int $page = 1, int $perPage = 100): array
     {
         $token = $this->getInstallationToken($installationId);
 
