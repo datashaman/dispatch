@@ -35,6 +35,10 @@ class RuleMatchingEngine
             throw new RuleMatchingException("Project not found for repo '{$repo}'");
         }
 
+        if (! $project->enabled) {
+            throw new RuleMatchingException("Project '{$repo}' is paused");
+        }
+
         if (! $project->path) {
             throw new RuleMatchingException("Project '{$repo}' has no local path configured");
         }

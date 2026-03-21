@@ -15,6 +15,7 @@ class ProjectFactory extends Factory
         return [
             'repo' => fake()->userName().'/'.fake()->slug(2),
             'path' => '/home/user/Projects/'.fake()->slug(2),
+            'enabled' => true,
         ];
     }
 }
