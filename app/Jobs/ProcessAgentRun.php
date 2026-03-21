@@ -268,7 +268,7 @@ class ProcessAgentRun implements ShouldQueue
      */
     protected function resolveApiKey(): ?string
     {
-        $secrets = $this->project->agent_secrets;
+        $secrets = $this->project->agent_secrets ?? [];
 
         return $secrets['api_key'] ?? null;
     }

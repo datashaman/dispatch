@@ -15,10 +15,10 @@ return new class extends Migration
     }
 
     /**
-     * Reverse the migrations.
+     * This migration is destructive and cannot be reversed.
      */
     public function down(): void
     {
-        // Cannot restore original env var name mappings
+        throw new RuntimeException('Migration is irreversible: original agent_secrets values cannot be restored.');
     }
 };
