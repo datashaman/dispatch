@@ -7,15 +7,11 @@ use App\Services\DefaultRulesService;
 use App\Services\GitHubAppService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
-use Illuminate\Support\Facades\Process;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
 new #[Title('Projects')] class extends Component {
-    public string $newRepo = '';
-    public string $newPath = '';
-    public bool $showAddForm = false;
     public bool $showEditForm = false;
     public ?int $editingProjectId = null;
     public string $editRepo = '';
@@ -40,22 +36,6 @@ new #[Title('Projects')] class extends Component {
     public string $registerRepo = '';
     public string $registerPath = '';
     public ?int $registerInstallationDbId = null;
-
-    public function updatedNewPath(): void
-    {
-        if (! File::isDirectory($this->newPath)) {
-            return;
-        }
-
-        $result = Process::path($this->newPath)->run('git remote get-url origin');
-
-        if ($result->successful()) {
-            $url = trim($result->output());
-            if (preg_match('#[:/]([^/]+/[^/]+?)(?:\.git)?$#', $url, $matches)) {
-                $this->newRepo = $matches[1];
-            }
-        }
-    }
 
     public function getProviders(): array
     {
@@ -295,32 +275,6 @@ new #[Title('Projects')] class extends Component {
         $this->dispatch('project-updated');
     }
 
-    public function addProject(): void
-    {
-        $this->validate([
-            'newRepo' => ['required', 'string', 'unique:projects,repo'],
-            'newPath' => ['required', 'string'],
-        ], [
-            'newRepo.unique' => 'This repository is already registered.',
-        ]);
-
-        if (! File::isDirectory($this->newPath)) {
-            $this->addError('newPath', 'The path does not exist on disk.');
-
-            return;
-        }
-
-        $project = Project::create([
-            'repo' => $this->newRepo,
-            'path' => $this->newPath,
-        ]);
-
-        app(DefaultRulesService::class)->seed($project);
-
-        $this->reset('newRepo', 'newPath', 'showAddForm');
-        $this->dispatch('project-added');
-    }
-
     public function removeProject(int $id): void
     {
         Project::findOrFail($id)->delete();
@@ -349,18 +303,13 @@ new #[Title('Projects')] class extends Component {
     <div class="flex items-center justify-between mb-6">
         <div>
             <flux:heading size="xl">{{ __('Projects') }}</flux:heading>
-            <flux:text class="mt-1">{{ __('Manage registered repositories and their local paths.') }}</flux:text>
+            <flux:text class="mt-1">{{ __('Repositories connected to webhook dispatch.') }}</flux:text>
         </div>
-        <div class="flex items-center gap-2">
-            @if ($this->isGitHubAppConfigured && $this->installations->isNotEmpty())
-                <flux:button variant="ghost" icon="cloud" wire:click="openRepoPicker">
-                    {{ __('Connect Repos') }}
-                </flux:button>
-            @endif
-            <flux:button variant="primary" icon="plus" wire:click="$set('showAddForm', true)">
-                {{ __('Add Project') }}
+        @if ($this->isGitHubAppConfigured && $this->installations->isNotEmpty())
+            <flux:button variant="primary" icon="cloud" wire:click="openRepoPicker">
+                {{ __('Connect Repos') }}
             </flux:button>
-        </div>
+        @endif
     </div>
 
     @if ($statusMessage)
@@ -484,34 +433,6 @@ new #[Title('Projects')] class extends Component {
         </form>
     </flux:modal>
 
-    {{-- Add Project Form --}}
-    <flux:modal wire:model="showAddForm">
-        <form wire:submit="addProject">
-            <flux:heading size="lg">{{ __('Add Project') }}</flux:heading>
-            <flux:text class="mt-1">{{ __('Register a GitHub repository with its local filesystem path.') }}</flux:text>
-
-            <div class="mt-6 space-y-4">
-                <flux:field>
-                    <flux:label>{{ __('Local Path') }}</flux:label>
-                    <flux:input wire:model.live.debounce.500ms="newPath" placeholder="/path/to/repo" required />
-                    <flux:description>{{ __('Path to a local git clone. The repository will be detected automatically.') }}</flux:description>
-                    <flux:error name="newPath" />
-                </flux:field>
-
-                <flux:field>
-                    <flux:label>{{ __('Repository') }}</flux:label>
-                    <flux:input wire:model="newRepo" placeholder="owner/repo" required />
-                    <flux:error name="newRepo" />
-                </flux:field>
-            </div>
-
-            <div class="mt-6 flex justify-end gap-2">
-                <flux:button variant="ghost" wire:click="$set('showAddForm', false)">{{ __('Cancel') }}</flux:button>
-                <flux:button variant="primary" type="submit">{{ __('Add Project') }}</flux:button>
-            </div>
-        </form>
-    </flux:modal>
-
     {{-- Edit Project Form --}}
     <flux:modal wire:model="showEditForm" class="md:w-2xl">
         <form wire:submit="updateProject">
@@ -598,8 +519,8 @@ new #[Title('Projects')] class extends Component {
     @if ($projects->isEmpty())
         <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 p-8 text-center">
             <flux:icon name="folder" class="mx-auto h-12 w-12 text-zinc-400" />
-            <flux:heading size="lg" class="mt-4">{{ __('No projects registered') }}</flux:heading>
-            <flux:text class="mt-2">{{ __('Add a project to get started with webhook dispatch.') }}</flux:text>
+            <flux:heading size="lg" class="mt-4">{{ __('No repos connected') }}</flux:heading>
+            <flux:text class="mt-2">{{ __('Connect a repo to get started with webhook dispatch.') }}</flux:text>
             @if (! $this->isGitHubAppConfigured)
                 <flux:button variant="ghost" class="mt-4" icon="cog-6-tooth" :href="route('github.settings')" wire:navigate>
                     {{ __('Set up GitHub App') }}

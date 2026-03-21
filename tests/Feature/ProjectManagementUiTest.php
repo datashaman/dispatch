@@ -60,54 +60,9 @@ test('lists all registered projects', function () {
         ->assertSee('/tmp/repo-b');
 });
 
-test('shows empty state when no projects exist', function () {
+test('shows empty state when no repos connected', function () {
     Volt::test('pages::projects.index')
-        ->assertSee('No projects registered');
-});
-
-test('can add a new project', function () {
-    $path = sys_get_temp_dir().'/'.uniqid('dispatch-test-');
-    mkdir($path);
-
-    try {
-        Volt::test('pages::projects.index')
-            ->set('newRepo', 'owner/new-repo')
-            ->set('newPath', $path)
-            ->call('addProject');
-
-        expect(Project::where('repo', 'owner/new-repo')->exists())->toBeTrue();
-        expect(Project::where('repo', 'owner/new-repo')->first()->path)->toBe($path);
-    } finally {
-        File::deleteDirectory($path);
-    }
-});
-
-test('validates repo is unique when adding', function () {
-    Project::factory()->create(['repo' => 'owner/existing']);
-
-    Volt::test('pages::projects.index')
-        ->set('newRepo', 'owner/existing')
-        ->set('newPath', '/tmp')
-        ->call('addProject')
-        ->assertHasErrors('newRepo');
-});
-
-test('validates path exists on disk when adding', function () {
-    Volt::test('pages::projects.index')
-        ->set('newRepo', 'owner/new-repo')
-        ->set('newPath', '/nonexistent/path/that/does/not/exist')
-        ->call('addProject')
-        ->assertHasErrors('newPath');
-
-    expect(Project::where('repo', 'owner/new-repo')->exists())->toBeFalse();
-});
-
-test('validates required fields when adding', function () {
-    Volt::test('pages::projects.index')
-        ->set('newRepo', '')
-        ->set('newPath', '')
-        ->call('addProject')
-        ->assertHasErrors(['newRepo', 'newPath']);
+        ->assertSee('No repos connected');
 });
 
 test('can remove a project with confirmation', function () {
