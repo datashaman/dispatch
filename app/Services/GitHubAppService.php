@@ -84,9 +84,9 @@ class GitHubAppService
     /**
      * List repositories accessible to a specific installation.
      *
-     * @return array<int, array<string, mixed>>
+     * @return array{total_count: int, repositories: array<int, array<string, mixed>>}
      */
-    public function listRepositories(int $installationId, int $page = 1, int $perPage = 30): array
+    public function listRepositories(int $installationId, int $page = 1, int $perPage = 100): array
     {
         $token = $this->getInstallationToken($installationId);
 
