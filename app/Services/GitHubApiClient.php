@@ -130,14 +130,29 @@ class GitHubApiClient
     public function commitFile(string $repo, string $path, string $content, string $commitMessage, int $installationId, ?string $branch = null): array
     {
         try {
+            $request = $this->installationRequest($installationId);
+            $url = self::API_BASE."/repos/{$repo}/contents/{$path}";
+
             // Get the existing file's SHA (required for updates)
             $existingSha = null;
-            $url = self::API_BASE."/repos/{$repo}/contents/{$path}";
             $query = $branch ? ['ref' => $branch] : [];
 
-            $existing = $this->installationRequest($installationId)->get($url, $query);
+            $existing = $request->get($url, $query);
             if ($existing->successful()) {
                 $existingSha = $existing->json('sha');
+            } elseif ($existing->status() !== 404) {
+                Log::error('GitHubApiClient: failed to fetch existing file before commit', [
+                    'repo' => $repo,
+                    'path' => $path,
+                    'status' => $existing->status(),
+                    'error' => $existing->body(),
+                ]);
+
+                return [
+                    'success' => false,
+                    'message' => "GitHub API error fetching file ({$existing->status()}): {$existing->json('message', 'Unknown error')}",
+                    'commit_sha' => null,
+                ];
             }
 
             $payload = [
@@ -153,7 +168,7 @@ class GitHubApiClient
                 $payload['branch'] = $branch;
             }
 
-            $response = $this->installationRequest($installationId)->put($url, $payload);
+            $response = $request->put($url, $payload);
 
             if (! $response->successful()) {
                 Log::error('GitHubApiClient: failed to commit file', [
@@ -170,19 +185,10 @@ class GitHubApiClient
                 ];
             }
 
-            $commitSha = $response->json('commit.sha');
-
-            Log::info('GitHubApiClient: file committed', [
-                'repo' => $repo,
-                'path' => $path,
-                'commit_sha' => $commitSha,
-                'branch' => $branch,
-            ]);
-
             return [
                 'success' => true,
                 'message' => 'Committed to repository.',
-                'commit_sha' => $commitSha,
+                'commit_sha' => $response->json('commit.sha'),
             ];
         } catch (\Throwable $e) {
             Log::error('GitHubApiClient: exception committing file', [

@@ -485,11 +485,9 @@ test('deploy config shows button only when GitHub installation exists', function
         ->assertDontSee('Deploy to Repo');
 
     // With installation — deploy button visible
-    $installation = GitHubInstallation::create([
+    $installation = GitHubInstallation::factory()->create([
         'installation_id' => 12345,
         'account_login' => 'testuser',
-        'account_type' => 'User',
-        'account_id' => 1,
     ]);
 
     $this->project->update(['github_installation_id' => $installation->id]);
@@ -500,11 +498,9 @@ test('deploy config shows button only when GitHub installation exists', function
 });
 
 test('deploy config fails when dispatch.yml does not exist', function () {
-    $installation = GitHubInstallation::create([
+    $installation = GitHubInstallation::factory()->create([
         'installation_id' => 12345,
         'account_login' => 'testuser',
-        'account_type' => 'User',
-        'account_id' => 1,
     ]);
 
     $this->project->update(['github_installation_id' => $installation->id]);
