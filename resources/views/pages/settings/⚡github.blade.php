@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\GitHubInstallation;
 use App\Services\GitHubAppService;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
@@ -30,6 +31,12 @@ new #[Title('GitHub App')] class extends Component {
     public function installUrl(): ?string
     {
         return app(GitHubAppService::class)->getInstallUrl();
+    }
+
+    #[Computed]
+    public function installations(): \Illuminate\Database\Eloquent\Collection
+    {
+        return GitHubInstallation::orderBy('account_login')->get();
     }
 }; ?>
 
@@ -73,6 +80,43 @@ new #[Title('GitHub App')] class extends Component {
                 <flux:button variant="primary" icon="plus" href="{{ $this->installUrl }}" target="_blank">
                     {{ __('Install on GitHub') }}
                 </flux:button>
+            @endif
+
+            {{-- Installations --}}
+            @if ($this->installations->isNotEmpty())
+                <div class="space-y-2">
+                    <flux:heading size="sm">{{ __('Installations') }}</flux:heading>
+                    @foreach ($this->installations as $installation)
+                        <a href="{{ route('github.repos', $installation) }}" wire:navigate
+                           class="block rounded-xl border border-zinc-200 dark:border-zinc-700 p-4 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <flux:heading size="sm">{{ $installation->account_login }}</flux:heading>
+                                    <flux:text class="mt-0.5 text-xs">
+                                        {{ $installation->account_type }} &middot;
+                                        {{ $installation->projects()->count() }} {{ __('registered repos') }}
+                                    </flux:text>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    @if ($installation->suspended_at)
+                                        <flux:badge color="amber" size="sm">{{ __('Suspended') }}</flux:badge>
+                                    @else
+                                        <flux:badge color="green" size="sm">{{ __('Active') }}</flux:badge>
+                                    @endif
+                                    <flux:icon name="chevron-right" class="size-4 text-zinc-400" />
+                                </div>
+                            </div>
+                        </a>
+                    @endforeach
+                </div>
+            @endif
+
+            {{-- Flash messages --}}
+            @if (session('status'))
+                <flux:callout variant="success">{{ session('status') }}</flux:callout>
+            @endif
+            @if (session('error'))
+                <flux:callout variant="danger">{{ session('error') }}</flux:callout>
             @endif
         </div>
     </x-pages::settings.layout>
