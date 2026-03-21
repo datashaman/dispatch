@@ -5,12 +5,106 @@ namespace App\Services;
 use App\DataTransferObjects\DispatchConfig;
 use App\DataTransferObjects\FilterConfig;
 use App\DataTransferObjects\RuleConfig;
+use App\Models\Project;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\Yaml\Yaml;
 
 class ConfigWriter
 {
+    public function __construct(
+        private ConfigLoader $configLoader,
+        private ConfigSyncer $configSyncer,
+    ) {}
+
     /**
-     * Write a DispatchConfig to a dispatch.yml file.
+     * Convert a raw config data array to a YAML string.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public function arrayToYaml(array $data): string
+    {
+        return Yaml::dump($data, 10, 2, Yaml::DUMP_MULTI_LINE_LITERAL_BLOCK);
+    }
+
+    /**
+     * Save config data array to dispatch.yml and sync to database.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array{success: bool, message: string, sync_warning: ?string}
+     */
+    public function save(Project $project, array $data, int $loadedMtime): array
+    {
+        $filePath = rtrim($project->path, '/').'/dispatch.yml';
+
+        // Check for external modifications (mtime conflict)
+        if (file_exists($filePath)) {
+            clearstatcache(true, $filePath);
+            $currentMtime = filemtime($filePath);
+            if ($currentMtime !== $loadedMtime && $loadedMtime > 0) {
+                return [
+                    'success' => false,
+                    'message' => 'dispatch.yml was modified externally since you loaded it. Reload to see the latest version.',
+                    'sync_warning' => null,
+                ];
+            }
+        }
+
+        $yaml = "---\n".$this->arrayToYaml($data);
+
+        $result = file_put_contents($filePath, $yaml);
+
+        if ($result === false) {
+            return [
+                'success' => false,
+                'message' => 'Failed to write dispatch.yml. Check file permissions.',
+                'sync_warning' => null,
+            ];
+        }
+
+        Log::info('Config saved', [
+            'project' => $project->repo,
+            'project_id' => $project->id,
+            'rules_count' => count($data['rules'] ?? []),
+            'user' => auth()->id(),
+        ]);
+
+        // Sync to database
+        $syncWarning = null;
+        try {
+            $this->configSyncer->import($project);
+        } catch (\Throwable $e) {
+            $syncWarning = 'Database sync failed — changes will apply on next reload. Error: '.$e->getMessage();
+            Log::warning('Config sync failed after save', [
+                'project' => $project->repo,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return [
+            'success' => true,
+            'message' => 'dispatch.yml saved.',
+            'sync_warning' => $syncWarning,
+        ];
+    }
+
+    /**
+     * Get the current mtime of the dispatch.yml file.
+     */
+    public function getMtime(string $projectPath): ?int
+    {
+        $filePath = rtrim($projectPath, '/').'/dispatch.yml';
+
+        if (! file_exists($filePath)) {
+            return null;
+        }
+
+        clearstatcache(true, $filePath);
+
+        return filemtime($filePath);
+    }
+
+    /**
+     * Write a DispatchConfig DTO to a dispatch.yml file.
      */
     public function write(DispatchConfig $config, string $projectPath): void
     {
