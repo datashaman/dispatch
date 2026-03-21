@@ -65,7 +65,11 @@ test('github settings appears in settings navigation', function () {
 });
 
 test('github settings shows installations list', function () {
-    $installation = GitHubInstallation::factory()->create([
+    config(['services.github.app_id' => null]);
+    config(['services.github.app_private_key' => null]);
+    config(['services.github.app_private_key_path' => null]);
+
+    GitHubInstallation::factory()->create([
         'account_login' => 'test-org',
         'account_type' => 'Organization',
     ]);
