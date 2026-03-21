@@ -44,6 +44,12 @@ it('throws exception when project not found', function () {
     $this->engine->match('nonexistent/repo', 'issues.labeled', []);
 })->throws(RuleMatchingException::class, "Project not found for repo 'nonexistent/repo'");
 
+it('throws exception when project is paused', function () {
+    Project::factory()->create(['repo' => 'owner/repo', 'path' => $this->tempDir, 'enabled' => false]);
+
+    $this->engine->match('owner/repo', 'issues.labeled', []);
+})->throws(RuleMatchingException::class, "Project 'owner/repo' is paused");
+
 it('returns empty collection when no rules match event type', function () {
     writeDispatchYaml($this->tempDir, [
         ['id' => 'push-rule', 'event' => 'push', 'prompt' => 'Handle push'],
