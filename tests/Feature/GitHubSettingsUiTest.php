@@ -4,6 +4,7 @@ use App\Models\GitHubInstallation;
 use App\Models\Project;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Livewire\Volt\Volt;
 
@@ -80,11 +81,68 @@ test('github settings shows installations list', function () {
         ->assertSee('Active');
 });
 
-test('github repos page is accessible', function () {
+test('github repos page shows repositories', function () {
     $installation = GitHubInstallation::factory()->create();
 
-    $this->get(route('github.repos', $installation))
-        ->assertStatus(200);
+    Http::fake([
+        'api.github.com/app/installations/*/access_tokens' => Http::response(['token' => 'fake-token']),
+        'api.github.com/installation/repositories*' => Http::response([
+            'total_count' => 2,
+            'repositories' => [
+                ['id' => 1, 'full_name' => 'org/public-repo', 'name' => 'public-repo', 'description' => 'A public repo', 'private' => false, 'language' => 'PHP'],
+                ['id' => 2, 'full_name' => 'org/private-repo', 'name' => 'private-repo', 'description' => 'A private repo', 'private' => true, 'language' => 'PHP'],
+            ],
+        ]),
+    ]);
+
+    Volt::test('pages::settings.github-repos', ['installation' => $installation])
+        ->assertSee('org/public-repo')
+        ->assertSee('org/private-repo')
+        ->assertSee('Private');
+});
+
+test('github repos search filters across all pages', function () {
+    $installation = GitHubInstallation::factory()->create();
+
+    Http::fake([
+        'api.github.com/app/installations/*/access_tokens' => Http::response(['token' => 'fake-token']),
+        'api.github.com/installation/repositories*' => Http::response([
+            'total_count' => 3,
+            'repositories' => [
+                ['id' => 1, 'full_name' => 'org/alpha', 'name' => 'alpha', 'description' => null, 'private' => false, 'language' => 'PHP'],
+                ['id' => 2, 'full_name' => 'org/beta', 'name' => 'beta', 'description' => null, 'private' => true, 'language' => 'PHP'],
+                ['id' => 3, 'full_name' => 'org/alphabetical', 'name' => 'alphabetical', 'description' => null, 'private' => false, 'language' => null],
+            ],
+        ]),
+    ]);
+
+    Cache::flush();
+
+    Volt::test('pages::settings.github-repos', ['installation' => $installation])
+        ->set('search', 'alpha')
+        ->assertSee('org/alpha')
+        ->assertSee('org/alphabetical')
+        ->assertDontSee('org/beta');
+});
+
+test('github repos search with no matches shows empty state', function () {
+    $installation = GitHubInstallation::factory()->create();
+
+    Http::fake([
+        'api.github.com/app/installations/*/access_tokens' => Http::response(['token' => 'fake-token']),
+        'api.github.com/installation/repositories*' => Http::response([
+            'total_count' => 1,
+            'repositories' => [
+                ['id' => 1, 'full_name' => 'org/some-repo', 'name' => 'some-repo', 'description' => null, 'private' => false, 'language' => null],
+            ],
+        ]),
+    ]);
+
+    Cache::flush();
+
+    Volt::test('pages::settings.github-repos', ['installation' => $installation])
+        ->set('search', 'nonexistent')
+        ->assertSee('No repositories found');
 });
 
 test('github repos page requires authentication', function () {
