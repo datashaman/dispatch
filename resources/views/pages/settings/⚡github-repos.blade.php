@@ -12,7 +12,9 @@ new #[Title('Browse Repositories')] class extends Component {
     public GitHubInstallation $installation;
 
     public int $page = 1;
+    public int $perPage = 100;
     public int $totalCount = 0;
+    public string $search = '';
     public string $statusMessage = '';
     public string $errorMessage = '';
     public string $registerPath = '';
@@ -24,11 +26,23 @@ new #[Title('Browse Repositories')] class extends Component {
         $this->installation = $installation;
     }
 
+    public function updatedSearch(): void
+    {
+        $this->page = 1;
+        unset($this->repos);
+    }
+
     #[Computed]
     public function repos(): array
     {
         try {
-            $result = app(GitHubAppService::class)->listRepositories(
+            $service = app(GitHubAppService::class);
+
+            if ($this->search !== '') {
+                return $this->searchRepos($service);
+            }
+
+            $result = $service->listRepositories(
                 $this->installation->installation_id,
                 $this->page,
             );
@@ -43,6 +57,39 @@ new #[Title('Browse Repositories')] class extends Component {
         }
     }
 
+    protected function searchRepos(GitHubAppService $service): array
+    {
+        $allRepos = \Illuminate\Support\Facades\Cache::remember(
+            "github_repos_{$this->installation->installation_id}",
+            300,
+            function () use ($service): array {
+                $repos = [];
+                $page = 1;
+
+                do {
+                    $result = $service->listRepositories(
+                        $this->installation->installation_id,
+                        $page,
+                    );
+                    $repos = array_merge($repos, $result['repositories'] ?? []);
+                    $page++;
+                } while (count($result['repositories'] ?? []) === 100);
+
+                return $repos;
+            },
+        );
+
+        $filtered = array_values(array_filter($allRepos, function (array $repo): bool {
+            return stripos($repo['full_name'], $this->search) !== false
+                || stripos($repo['description'] ?? '', $this->search) !== false;
+        }));
+
+        $this->totalCount = count($filtered);
+        $offset = ($this->page - 1) * $this->perPage;
+
+        return array_slice($filtered, $offset, $this->perPage);
+    }
+
     #[Computed]
     public function registeredRepos(): array
     {
@@ -52,7 +99,7 @@ new #[Title('Browse Repositories')] class extends Component {
     #[Computed]
     public function totalPages(): int
     {
-        return max(1, (int) ceil($this->totalCount / 100));
+        return max(1, (int) ceil($this->totalCount / $this->perPage));
     }
 
     public function previousPage(): void
@@ -134,6 +181,9 @@ new #[Title('Browse Repositories')] class extends Component {
                     {{ $errorMessage }}
                 </flux:callout>
             @endif
+
+            {{-- Search --}}
+            <flux:input wire:model.live.debounce.300ms="search" placeholder="Search repositories..." icon="magnifying-glass" clearable />
 
             {{-- Register Modal --}}
             <flux:modal wire:model="showRegisterModal">
