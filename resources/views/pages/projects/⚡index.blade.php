@@ -7,6 +7,7 @@ use App\Services\DefaultRulesService;
 use App\Services\GitHubAppService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Process;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -32,10 +33,6 @@ new #[Title('Projects')] class extends Component {
     public string $repoPickerSort = 'full_name';
     public string $repoPickerDirection = 'asc';
     public ?int $repoPickerInstallationId = null;
-    public bool $showRegisterModal = false;
-    public string $registerRepo = '';
-    public string $registerPath = '';
-    public ?int $registerInstallationDbId = null;
 
     public function getProviders(): array
     {
@@ -182,40 +179,53 @@ new #[Title('Projects')] class extends Component {
         unset($this->pickerRepos);
     }
 
-    public function startRegister(string $fullName, int $installationDbId): void
+    public function connectRepo(string $fullName, int $installationDbId): void
     {
-        $this->registerRepo = $fullName;
-        $this->registerPath = '';
-        $this->registerInstallationDbId = $installationDbId;
-        $this->showRegisterModal = true;
-    }
-
-    public function registerProject(): void
-    {
-        $this->validate([
-            'registerRepo' => ['required', 'string', 'unique:projects,repo'],
-            'registerPath' => ['required', 'string'],
-        ], [
-            'registerRepo.unique' => 'This repository is already registered.',
-        ]);
-
-        if (! File::isDirectory($this->registerPath)) {
-            $this->addError('registerPath', 'The path does not exist on disk.');
+        if (Project::where('repo', $fullName)->exists()) {
+            $this->errorMessage = "Repository {$fullName} is already connected.";
 
             return;
         }
 
-        $project = Project::create([
-            'repo' => $this->registerRepo,
-            'path' => $this->registerPath,
-            'github_installation_id' => $this->registerInstallationDbId,
-        ]);
+        $installation = GitHubInstallation::find($installationDbId);
 
-        app(DefaultRulesService::class)->seed($project);
+        if (! $installation) {
+            $this->errorMessage = 'Installation not found.';
 
-        $this->reset('showRegisterModal', 'registerRepo', 'registerPath', 'registerInstallationDbId');
-        unset($this->registeredRepos, $this->pickerRepos);
-        $this->statusMessage = "Project registered: {$project->repo}";
+            return;
+        }
+
+        $repoPath = storage_path("repos/{$fullName}");
+
+        try {
+            if (! File::isDirectory($repoPath)) {
+                $token = app(GitHubAppService::class)->getInstallationToken($installation->installation_id);
+                $cloneUrl = "https://x-access-token:{$token}@github.com/{$fullName}.git";
+
+                File::ensureDirectoryExists(dirname($repoPath));
+
+                $result = Process::run("git clone {$cloneUrl} {$repoPath}");
+
+                if (! $result->successful()) {
+                    $this->errorMessage = "Failed to clone {$fullName}: {$result->errorOutput()}";
+
+                    return;
+                }
+            }
+
+            $project = Project::create([
+                'repo' => $fullName,
+                'path' => $repoPath,
+                'github_installation_id' => $installationDbId,
+            ]);
+
+            app(DefaultRulesService::class)->seed($project);
+
+            unset($this->registeredRepos, $this->pickerRepos);
+            $this->statusMessage = "Connected: {$fullName}";
+        } catch (\Throwable $e) {
+            $this->errorMessage = "Failed to connect {$fullName}: {$e->getMessage()}";
+        }
     }
 
     public function unregisterRepo(string $repo): void
@@ -386,7 +396,7 @@ new #[Title('Projects')] class extends Component {
                                 @php
                                     $installation = $this->installations->firstWhere('installation_id', $repoPickerInstallationId);
                                 @endphp
-                                <flux:button variant="ghost" size="sm" wire:click="startRegister('{{ $repo['full_name'] }}', {{ $installation?->id }})">
+                                <flux:button variant="ghost" size="sm" wire:click="connectRepo('{{ $repo['full_name'] }}', {{ $installation?->id }})" wire:confirm="Connect {{ $repo['full_name'] }}?">
                                     <flux:badge color="zinc" size="sm">{{ __('Connect') }}</flux:badge>
                                 </flux:button>
                             @endif
@@ -409,29 +419,6 @@ new #[Title('Projects')] class extends Component {
             @endif
         </div>
     @endif
-
-    {{-- Register Modal (for repo picker) --}}
-    <flux:modal wire:model="showRegisterModal">
-        <form wire:submit="registerProject">
-            <flux:heading size="lg">{{ __('Connect Repository') }}</flux:heading>
-            <flux:text class="mt-1 font-mono text-sm">{{ $registerRepo }}</flux:text>
-
-            <div class="mt-6 space-y-4">
-                <flux:field>
-                    <flux:label>{{ __('Local Path') }}</flux:label>
-                    <flux:input wire:model="registerPath" placeholder="/path/to/local/clone" required />
-                    <flux:description>{{ __('The absolute path to the local clone of this repository.') }}</flux:description>
-                    <flux:error name="registerPath" />
-                    <flux:error name="registerRepo" />
-                </flux:field>
-            </div>
-
-            <div class="mt-6 flex justify-end gap-2">
-                <flux:button variant="ghost" wire:click="$set('showRegisterModal', false)">{{ __('Cancel') }}</flux:button>
-                <flux:button variant="primary" type="submit">{{ __('Connect') }}</flux:button>
-            </div>
-        </form>
-    </flux:modal>
 
     {{-- Edit Project Form --}}
     <flux:modal wire:model="showEditForm" class="md:w-2xl">
