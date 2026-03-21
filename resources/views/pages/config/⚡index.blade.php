@@ -20,6 +20,10 @@ new #[Title('Config Editor')] class extends Component {
     public array $originalConfigData = [];
     public int $loadedMtime = 0;
 
+    // API key (stored encrypted in DB, not in dispatch.yml)
+    public string $apiKey = '';
+    public bool $hasApiKey = false;
+
     // UI state
     public string $statusMessage = '';
     public string $errorMessage = '';
@@ -143,6 +147,10 @@ new #[Title('Config Editor')] class extends Component {
         $this->loadedMtime = app(ConfigWriter::class)->getMtime($project->path) ?? 0;
         $this->showMtimeConflict = false;
         $this->errorMessage = '';
+
+        // Load API key status from encrypted DB column
+        $this->hasApiKey = ! empty($project->agent_secrets['api_key']);
+        $this->apiKey = '';
     }
 
     public function generateDefaultRules(): void
@@ -197,6 +205,34 @@ new #[Title('Config Editor')] class extends Component {
             }
             $this->errorMessage = $result['message'];
         }
+    }
+
+    public function saveApiKey(): void
+    {
+        if (empty($this->apiKey)) {
+            $this->errorMessage = 'API key cannot be empty.';
+
+            return;
+        }
+
+        $project = $this->project;
+        $secrets = $project->agent_secrets ?? [];
+        $secrets['api_key'] = $this->apiKey;
+        $project->update(['agent_secrets' => $secrets]);
+
+        $this->hasApiKey = true;
+        $this->apiKey = '';
+        $this->statusMessage = 'API key saved.';
+    }
+
+    public function clearApiKey(): void
+    {
+        $project = $this->project;
+        $project->update(['agent_secrets' => null]);
+
+        $this->hasApiKey = false;
+        $this->apiKey = '';
+        $this->statusMessage = 'API key cleared.';
     }
 
     public function reloadConfig(): void
@@ -767,15 +803,12 @@ new #[Title('Config Editor')] class extends Component {
                                 placeholder="dispatch-agent"
                                 size="sm"
                             />
-                            <flux:select
+                            <flux:input
                                 label="{{ __('Executor') }}"
-                                wire:model.live="configData.agent.executor"
+                                value="laravel-ai"
                                 size="sm"
-                            >
-                                <option value="">{{ __('Select...') }}</option>
-                                <option value="laravel-ai">laravel-ai</option>
-                                <option value="claude-cli">claude-cli</option>
-                            </flux:select>
+                                readonly
+                            />
                             <flux:input
                                 label="{{ __('Provider') }}"
                                 wire:model.live.debounce.300ms="configData.agent.provider"
@@ -788,6 +821,35 @@ new #[Title('Config Editor')] class extends Component {
                                 placeholder="claude-sonnet-4-6"
                                 size="sm"
                             />
+                        </div>
+
+                        {{-- API Key --}}
+                        <div class="mt-4 pt-4 border-t border-zinc-200 dark:border-zinc-700">
+                            <div class="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400 font-medium mb-2">
+                                {{ __('API Key') }}
+                            </div>
+                            @if ($hasApiKey)
+                                <div class="flex items-center gap-2">
+                                    <flux:badge color="green" size="sm">{{ __('Configured') }}</flux:badge>
+                                    <flux:button size="sm" variant="ghost" wire:click="clearApiKey" wire:confirm="Remove the API key? Agent runs will fail until a new key is set.">
+                                        {{ __('Clear') }}
+                                    </flux:button>
+                                </div>
+                            @else
+                                <div class="flex items-center gap-2">
+                                    <flux:input
+                                        type="password"
+                                        wire:model="apiKey"
+                                        placeholder="sk-ant-..."
+                                        size="sm"
+                                        class="flex-1"
+                                    />
+                                    <flux:button size="sm" variant="primary" wire:click="saveApiKey">
+                                        {{ __('Save') }}
+                                    </flux:button>
+                                </div>
+                                <flux:text variant="subtle" class="text-xs mt-1">{{ __('Encrypted at rest. Required for agent execution.') }}</flux:text>
+                            @endif
                         </div>
                     </div>
 

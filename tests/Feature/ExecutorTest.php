@@ -472,6 +472,70 @@ test('ProcessAgentRun job renders prompt template with payload', function () {
     DispatchAgent::assertPrompted(fn ($prompt) => str_contains($prompt->prompt, 'Bug in login') && str_contains($prompt->prompt, '<user-content field="issue-title">'));
 });
 
+test('LaravelAiExecutor injects per-project API key and restores original after execution', function () {
+    DispatchAgent::fake(['Key injection test']);
+
+    // Set a known original key
+    config(['ai.providers.anthropic.key' => 'original-server-key']);
+
+    $webhookLog = WebhookLog::create([
+        'event_type' => 'push',
+        'repo' => 'owner/repo',
+        'payload' => [],
+        'status' => 'processed',
+        'created_at' => now(),
+    ]);
+
+    $agentRun = AgentRun::create([
+        'webhook_log_id' => $webhookLog->id,
+        'rule_id' => 'test-rule',
+        'status' => 'running',
+        'created_at' => now(),
+    ]);
+
+    $executor = app(LaravelAiExecutor::class);
+    $executor->execute($agentRun, 'Hello', [
+        'provider' => 'anthropic',
+        'model' => 'claude-sonnet-4-20250514',
+        'api_key' => 'sk-project-key-123',
+    ]);
+
+    // Original key must be restored after execution
+    expect(config('ai.providers.anthropic.key'))->toBe('original-server-key');
+});
+
+test('LaravelAiExecutor restores null original key after execution', function () {
+    DispatchAgent::fake(['Null key test']);
+
+    // Simulate no server-level key (BYOK-only setup)
+    config(['ai.providers.anthropic.key' => null]);
+
+    $webhookLog = WebhookLog::create([
+        'event_type' => 'push',
+        'repo' => 'owner/repo',
+        'payload' => [],
+        'status' => 'processed',
+        'created_at' => now(),
+    ]);
+
+    $agentRun = AgentRun::create([
+        'webhook_log_id' => $webhookLog->id,
+        'rule_id' => 'test-rule',
+        'status' => 'running',
+        'created_at' => now(),
+    ]);
+
+    $executor = app(LaravelAiExecutor::class);
+    $executor->execute($agentRun, 'Hello', [
+        'provider' => 'anthropic',
+        'model' => 'claude-sonnet-4-20250514',
+        'api_key' => 'sk-project-key-456',
+    ]);
+
+    // Must restore to null, not leave the project key in place
+    expect(config('ai.providers.anthropic.key'))->toBeNull();
+});
+
 test('DispatchAgent implements Agent and HasTools interfaces', function () {
     $agent = new DispatchAgent('You are helpful.', []);
 

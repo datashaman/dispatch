@@ -6,8 +6,6 @@ agent:
   instructions_file: AGENTS.md
   provider: anthropic
   model: claude-sonnet-4-6
-  secrets:
-    api_key: ANTHROPIC_API_KEY
 cache:
   config: true
 rules:

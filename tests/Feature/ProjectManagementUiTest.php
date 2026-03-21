@@ -194,7 +194,6 @@ test('project show page displays project details', function () {
         ->assertSee('owner/my-repo')
         ->assertSee('/tmp/my-repo')
         ->assertSee('sparky')
-        ->assertSee('laravel-ai')
         ->assertSee('anthropic')
         ->assertSee('claude-sonnet-4-6')
         ->assertSee('SPARKY.md')

@@ -37,8 +37,6 @@ agent:
   instructions_file: "SPARKY.md"
   provider: "anthropic"
   model: "claude-sonnet-4-6"
-  secrets:
-    api_key: "ANTHROPIC_API_KEY"
 
 cache:
   config: true
@@ -89,7 +87,6 @@ it('loads a valid dispatch.yml and returns a DispatchConfig', function () {
         ->agentInstructionsFile->toBe('SPARKY.md')
         ->agentProvider->toBe('anthropic')
         ->agentModel->toBe('claude-sonnet-4-6')
-        ->secrets->toBe(['api_key' => 'ANTHROPIC_API_KEY'])
         ->cacheConfig->toBeTrue()
         ->rules->toHaveCount(1);
 });

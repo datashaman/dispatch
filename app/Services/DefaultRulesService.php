@@ -47,7 +47,6 @@ class DefaultRulesService
             agentInstructionsFile: 'AGENTS.md',
             agentProvider: 'anthropic',
             agentModel: 'claude-sonnet-4-6',
-            secrets: ['api_key' => 'ANTHROPIC_API_KEY'],
             cacheConfig: true,
             rules: $this->getDefaultRules(),
         );
