@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\GitHubInstallation;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -263,7 +264,10 @@ class GitHubAppService
 
         file_put_contents($envPath, $env);
 
-        // Update running config immediately
+        // Clear cached config so subsequent requests pick up the new .env values
+        Artisan::call('config:clear');
+
+        // Update running config for the current request
         config([
             'services.github.app_id' => $credentials['id'],
             'services.github.app_private_key' => base64_encode($credentials['pem']),
@@ -306,6 +310,9 @@ class GitHubAppService
         $env = $this->setEnvValue($env, 'GITHUB_WEBHOOK_SECRET', '');
 
         file_put_contents($envPath, $env);
+
+        // Clear cached config so subsequent requests pick up the cleared .env values
+        Artisan::call('config:clear');
 
         config([
             'services.github.app_id' => null,
