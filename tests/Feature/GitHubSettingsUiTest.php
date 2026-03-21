@@ -142,7 +142,34 @@ test('github repos search with no matches shows empty state', function () {
 
     Volt::test('pages::settings.github-repos', ['installation' => $installation])
         ->set('search', 'nonexistent')
-        ->assertSee('No repositories found');
+        ->assertSee('No repositories match your search');
+});
+
+test('github repos sort changes order', function () {
+    $installation = GitHubInstallation::factory()->create();
+
+    Http::fake([
+        'api.github.com/app/installations/*/access_tokens' => Http::response(['token' => 'fake-token']),
+        'api.github.com/installation/repositories*' => Http::response([
+            'total_count' => 2,
+            'repositories' => [
+                ['id' => 1, 'full_name' => 'org/beta', 'name' => 'beta', 'description' => null, 'private' => false, 'language' => null, 'created_at' => '2025-01-01T00:00:00Z', 'updated_at' => '2025-06-01T00:00:00Z', 'pushed_at' => '2025-06-01T00:00:00Z'],
+                ['id' => 2, 'full_name' => 'org/alpha', 'name' => 'alpha', 'description' => null, 'private' => false, 'language' => null, 'created_at' => '2026-01-01T00:00:00Z', 'updated_at' => '2026-01-01T00:00:00Z', 'pushed_at' => '2026-01-01T00:00:00Z'],
+            ],
+        ]),
+    ]);
+
+    Cache::flush();
+
+    // Default sort (full_name asc) — alpha before beta
+    $component = Volt::test('pages::settings.github-repos', ['installation' => $installation]);
+    $html = $component->html();
+    expect(strpos($html, 'org/alpha'))->toBeLessThan(strpos($html, 'org/beta'));
+
+    // Descending — beta before alpha
+    $component->set('direction', 'desc');
+    $html = $component->html();
+    expect(strpos($html, 'org/beta'))->toBeLessThan(strpos($html, 'org/alpha'));
 });
 
 test('github repos page requires authentication', function () {
