@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\GitHubInstallation;
 use App\Models\Project;
 use App\Models\User;
 use App\Services\ConfigWriter;
@@ -466,6 +467,51 @@ test('ConfigWriter getMtime returns integer for existing file', function () {
 
     expect($mtime)->toBeInt();
     expect($mtime)->toBeGreaterThan(0);
+});
+
+test('deploy config fails without GitHub installation', function () {
+    writeDispatchYml($this->tempDir, minimalYaml());
+
+    Volt::test('pages::config.index', ['project' => $this->project])
+        ->call('deployConfig')
+        ->assertSet('errorMessage', 'No GitHub App installation linked to this project.');
+});
+
+test('deploy config shows button only when GitHub installation exists', function () {
+    writeDispatchYml($this->tempDir, minimalYaml());
+
+    // Without installation — no deploy button
+    Volt::test('pages::config.index', ['project' => $this->project])
+        ->assertDontSee('Deploy to Repo');
+
+    // With installation — deploy button visible
+    $installation = GitHubInstallation::create([
+        'installation_id' => 12345,
+        'account_login' => 'testuser',
+        'account_type' => 'User',
+        'account_id' => 1,
+    ]);
+
+    $this->project->update(['github_installation_id' => $installation->id]);
+    $this->project->refresh();
+
+    Volt::test('pages::config.index', ['project' => $this->project])
+        ->assertSee('Deploy to Repo');
+});
+
+test('deploy config fails when dispatch.yml does not exist', function () {
+    $installation = GitHubInstallation::create([
+        'installation_id' => 12345,
+        'account_login' => 'testuser',
+        'account_type' => 'User',
+        'account_id' => 1,
+    ]);
+
+    $this->project->update(['github_installation_id' => $installation->id]);
+
+    Volt::test('pages::config.index', ['project' => $this->project])
+        ->call('deployConfig')
+        ->assertSet('errorMessage', 'No dispatch.yml found. Save first.');
 });
 
 test('ConfigWriter save returns success result', function () {
