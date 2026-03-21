@@ -13,6 +13,7 @@ uses(RefreshDatabase::class);
 beforeEach(function () {
     $this->user = User::factory()->create();
     $this->actingAs($this->user);
+    Cache::flush();
 });
 
 test('github settings page is accessible to authenticated users', function () {
@@ -116,8 +117,6 @@ test('github repos search filters across all pages', function () {
         ]),
     ]);
 
-    Cache::flush();
-
     Volt::test('pages::settings.github-repos', ['installation' => $installation])
         ->set('search', 'alpha')
         ->assertSee('org/alpha')
@@ -137,8 +136,6 @@ test('github repos search with no matches shows empty state', function () {
             ],
         ]),
     ]);
-
-    Cache::flush();
 
     Volt::test('pages::settings.github-repos', ['installation' => $installation])
         ->set('search', 'nonexistent')
