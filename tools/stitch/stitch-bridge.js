@@ -10,6 +10,7 @@
  * Usage:
  *   node stitch-bridge.js generate --project <id> --prompt <text> [--vibe <text>] [--device <type>]
  *   node stitch-bridge.js edit --screen <id> --prompt <text>
+ *   node stitch-bridge.js list-projects
  *   node stitch-bridge.js create-project --title <text>
  *
  * Environment:
@@ -24,6 +25,7 @@ function usage() {
   console.error(`Usage:
   stitch-bridge.js generate --project <id> --prompt <text> [--vibe <text>] [--device <type>]
   stitch-bridge.js edit --screen <id> --prompt <text>
+  stitch-bridge.js list-projects
   stitch-bridge.js create-project --title <text>
 
 Device types: ${VALID_DEVICES.join(', ')}
@@ -182,6 +184,16 @@ async function edit(client, args) {
   };
 }
 
+async function listProjects(client) {
+  const result = await client.callTool('list_projects', {});
+  const projects = result?.projects || [];
+
+  return projects.map((p) => ({
+    project_id: p.projectId || p.project_id || p.id || p.name?.split('/').pop(),
+    title: p.title || p.displayName || p.name || 'Untitled',
+  }));
+}
+
 async function createProject(client, args) {
   const { title } = args;
 
@@ -231,6 +243,9 @@ async function main() {
         break;
       case 'edit':
         result = await edit(client, args);
+        break;
+      case 'list-projects':
+        result = await listProjects(client);
         break;
       case 'create-project':
         result = await createProject(client, args);

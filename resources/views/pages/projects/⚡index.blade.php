@@ -8,6 +8,7 @@ use App\Services\GitHubAppService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
@@ -241,6 +242,9 @@ new #[Title('Projects')] class extends Component {
     }
 
     public ?string $editStitchProjectId = null;
+    public array $stitchProjects = [];
+    public bool $loadingStitchProjects = false;
+    public string $stitchProjectError = '';
 
     public function editProject(int $id): void
     {
@@ -266,6 +270,49 @@ new #[Title('Projects')] class extends Component {
         $this->providerKeys['stitch'] = '';
 
         $this->showEditForm = true;
+
+        $this->loadStitchProjects();
+    }
+
+    public function loadStitchProjects(): void
+    {
+        $this->stitchProjects = [];
+        $this->stitchProjectError = '';
+
+        $project = Project::find($this->editingProjectId);
+        if (! $project) {
+            return;
+        }
+
+        // Resolve the API key: project override → user fallback
+        $secrets = $project->agent_secrets ?? [];
+        $apiKey = $secrets['stitch'] ?? null;
+
+        if (! $apiKey) {
+            $apiKey = Auth::user()->api_keys['stitch'] ?? null;
+        }
+
+        if (! $apiKey) {
+            return;
+        }
+
+        $this->loadingStitchProjects = true;
+
+        try {
+            $this->stitchProjects = app(\App\Services\StitchBridge::class)->listProjects($apiKey);
+        } catch (\Throwable $e) {
+            Log::warning('StitchBridge: failed to list projects', ['error' => $e->getMessage()]);
+            $this->stitchProjectError = 'Failed to load Stitch projects. Check your API key.';
+        } finally {
+            $this->loadingStitchProjects = false;
+        }
+    }
+
+    public function saveStitchProject(): void
+    {
+        $project = Project::findOrFail($this->editingProjectId);
+        $project->update(['stitch_project_id' => $this->editStitchProjectId ?: null]);
+        $this->statusMessage = 'Stitch project updated.';
     }
 
     public function updateProject(): void
@@ -302,6 +349,10 @@ new #[Title('Projects')] class extends Component {
         $this->providerKeys[$provider] = '';
         $label = $this->getProviders()[$provider]['label'] ?? ucfirst($provider);
         $this->statusMessage = $label . ' key saved.';
+
+        if ($provider === 'stitch') {
+            $this->loadStitchProjects();
+        }
     }
 
     public function clearProviderKey(string $provider): void
@@ -567,11 +618,26 @@ new #[Title('Projects')] class extends Component {
 
                 <div class="space-y-3">
                     <div>
-                        <div class="text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">{{ __('Stitch Project ID') }}</div>
-                        @if ($editStitchProjectId)
+                        <div class="text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">{{ __('Stitch Project') }}</div>
+                        @if (count($stitchProjects) > 0)
+                            <div class="flex items-center gap-2">
+                                <flux:select wire:model="editStitchProjectId" wire:change="saveStitchProject" size="sm" class="flex-1" placeholder="{{ __('Auto-create on first use') }}">
+                                    <flux:select.option value="">{{ __('Auto-create on first use') }}</flux:select.option>
+                                    @foreach ($stitchProjects as $sp)
+                                        <flux:select.option value="{{ $sp['project_id'] }}">{{ $sp['title'] }}</flux:select.option>
+                                    @endforeach
+                                </flux:select>
+                                <flux:button size="sm" variant="ghost" wire:click="loadStitchProjects" title="{{ __('Refresh') }}">
+                                    <flux:icon name="arrow-path" class="size-4" />
+                                </flux:button>
+                            </div>
+                        @elseif ($stitchProjectError)
+                            <flux:text variant="subtle" class="text-xs text-red-500">{{ $stitchProjectError }}</flux:text>
+                        @elseif ($editStitchProjectId)
                             <flux:badge color="blue" size="sm">{{ $editStitchProjectId }}</flux:badge>
+                            <flux:text variant="subtle" class="text-xs mt-1">{{ __('Configure a Stitch API key to select from your projects.') }}</flux:text>
                         @else
-                            <flux:text variant="subtle" class="text-xs">{{ __('Will be created automatically on first use.') }}</flux:text>
+                            <flux:text variant="subtle" class="text-xs">{{ __('Configure a Stitch API key to select a project, or one will be created on first use.') }}</flux:text>
                         @endif
                     </div>
 
