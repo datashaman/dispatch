@@ -330,7 +330,7 @@ new #[Title('Config Editor')] class extends Component {
             $prUrl = $prResult['data']['html_url'] ?? null;
             $prNumber = $prResult['data']['number'] ?? '';
             $this->statusMessage = $prUrl
-                ? "Pull request <a href=\"{$prUrl}\" target=\"_blank\" class=\"underline\">#{$prNumber}</a> created."
+                ? "Pull request <a href=\"{$prUrl}\" target=\"_blank\" class=\"underline inline\">#{$prNumber}</a> created."
                 : "Config committed to branch {$branchName}.";
         } else {
             $this->statusMessage = "Config committed to branch {$branchName} but PR creation failed: {$prResult['error']}";

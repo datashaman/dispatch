@@ -29,7 +29,6 @@ new #[Title('Project Detail')] class extends Component {
         <div class="flex items-center justify-between mb-6">
             <div>
                 <flux:heading size="xl">{{ $project->repo }}</flux:heading>
-                <flux:text class="mt-1 font-mono text-sm">{{ $project->path }}</flux:text>
             </div>
             <div class="flex items-center gap-2">
                 <flux:button variant="ghost" icon="arrow-left" :href="route('projects.index')" wire:navigate>
