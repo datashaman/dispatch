@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Database\Factories\ProjectFactory;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -37,6 +38,15 @@ class Project extends Model
             'enabled' => 'boolean',
             'monthly_budget' => 'decimal:2',
         ];
+    }
+
+    /**
+     * Derive the local path from the repo name so it always uses
+     * the current storage directory, surviving deploys.
+     */
+    protected function path(): Attribute
+    {
+        return Attribute::get(fn ($value) => $value ?: storage_path("repos/{$this->repo}"));
     }
 
     /**
