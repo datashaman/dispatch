@@ -12,6 +12,7 @@ use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
+use Laravel\Ai\Ai;
 use Laravel\Ai\Contracts\Tool;
 use Laravel\Ai\Streaming\Events\StreamEvent;
 use Laravel\Ai\Streaming\Events\ToolCall;
@@ -37,13 +38,14 @@ class LaravelAiExecutor implements Executor
             $model = $agentConfig['model'] ?? null;
             $apiKey = $agentConfig['api_key'] ?? null;
 
-            // Inject per-project API key into provider config (safe: queue workers process one job at a time)
+            // Inject per-project API key by resetting the cached provider instance
             $configKey = null;
             $originalKey = null;
             if ($apiKey && $provider) {
                 $configKey = "ai.providers.{$provider}.key";
                 $originalKey = config($configKey);
                 config([$configKey => $apiKey]);
+                Ai::forgetInstance($provider);
             }
 
             Log::info('LaravelAiExecutor: starting execution', [
@@ -128,9 +130,10 @@ class LaravelAiExecutor implements Executor
                 durationMs: $durationMs,
             );
         } finally {
-            // Restore original provider key after execution
+            // Restore original provider key and reset cached instance
             if ($configKey !== null) {
                 config([$configKey => $originalKey]);
+                Ai::forgetInstance($provider);
             }
         }
     }
