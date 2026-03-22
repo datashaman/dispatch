@@ -319,30 +319,34 @@ new #[Title('Webhook Log Detail')] class extends Component {
                             <flux:text class="text-sm font-medium">Agent Run #<span x-text="stream.runId"></span></flux:text>
                         </div>
 
-                        {{-- Tool activity --}}
-                        <template x-if="stream.events.length > 0">
-                            <div class="space-y-2 mb-3 max-h-64 overflow-y-auto">
-                                <template x-for="(event, index) in stream.events" :key="index">
-                                    <div>
-                                        <template x-if="event.type === 'tool_call'">
-                                            <div class="rounded bg-blue-50 dark:bg-blue-900/20 p-2">
+                        {{-- Interleaved events and text --}}
+                        <div class="space-y-1.5 mb-3 max-h-80 overflow-y-auto">
+                            <template x-for="(event, index) in stream.events" :key="index">
+                                <div>
+                                    <template x-if="event.type === 'tool_call'">
+                                        <div class="rounded bg-blue-50 dark:bg-blue-900/20 px-3 py-1.5">
+                                            <div class="flex items-center gap-2">
                                                 <span class="text-xs font-medium text-blue-700 dark:text-blue-300" x-text="'→ ' + event.tool_name"></span>
                                             </div>
-                                        </template>
-                                        <template x-if="event.type === 'tool_result'">
-                                            <div class="rounded bg-emerald-50 dark:bg-emerald-900/20 p-2">
-                                                <span class="text-xs font-medium text-emerald-700 dark:text-emerald-300" x-text="'✓ ' + event.tool_name + (event.successful ? '' : ' (failed)')"></span>
-                                            </div>
-                                        </template>
-                                    </div>
-                                </template>
-                            </div>
-                        </template>
-
-                        {{-- Text output --}}
-                        <template x-if="stream.text.length > 0">
-                            <pre class="text-sm font-mono whitespace-pre-wrap text-zinc-700 dark:text-zinc-300 max-h-48 overflow-y-auto" x-text="stream.text"></pre>
-                        </template>
+                                            <template x-if="event.summary">
+                                                <span class="text-xs text-blue-600/70 dark:text-blue-400/70 font-mono" x-text="event.summary"></span>
+                                            </template>
+                                        </div>
+                                    </template>
+                                    <template x-if="event.type === 'tool_result'">
+                                        <div class="rounded px-3 py-1.5" :class="event.successful !== false ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'bg-red-50 dark:bg-red-900/20'">
+                                            <span class="text-xs font-medium" :class="event.successful !== false ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'" x-text="(event.successful !== false ? '✓ ' : '✗ ') + event.tool_name"></span>
+                                            <template x-if="event.error">
+                                                <span class="text-xs text-red-600 dark:text-red-400 ml-2" x-text="event.error"></span>
+                                            </template>
+                                        </div>
+                                    </template>
+                                    <template x-if="event.type === 'text'">
+                                        <pre class="text-sm font-mono whitespace-pre-wrap text-zinc-700 dark:text-zinc-300 mt-2" x-text="event.text"></pre>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
                     </div>
                 </template>
             </div>
@@ -534,13 +538,30 @@ Alpine.data('agentRunStream', (runIds) => ({
             const channel = window.Echo.private(`agent-run.${runId}`);
 
             channel.listen('.text_delta', (e) => {
-                this.getOrCreateStream(runId).text += e.delta ?? '';
+                const stream = this.getOrCreateStream(runId);
+                stream.textBuffer = (stream.textBuffer || '') + (e.delta ?? '');
+                // Flush text buffer as an event when we get a complete chunk
+                clearTimeout(stream.textFlushTimer);
+                stream.textFlushTimer = setTimeout(() => {
+                    if (stream.textBuffer) {
+                        stream.events.push({ type: 'text', text: stream.textBuffer });
+                        stream.textBuffer = '';
+                    }
+                }, 300);
             });
 
             channel.listen('.tool_call', (e) => {
-                this.getOrCreateStream(runId).events.push({
+                const stream = this.getOrCreateStream(runId);
+                // Flush any pending text before tool call
+                if (stream.textBuffer) {
+                    clearTimeout(stream.textFlushTimer);
+                    stream.events.push({ type: 'text', text: stream.textBuffer });
+                    stream.textBuffer = '';
+                }
+                stream.events.push({
                     type: 'tool_call',
                     tool_name: e.tool_name ?? 'unknown',
+                    summary: this.summarizeArgs(e.tool_name, e.arguments),
                 });
             });
 
@@ -549,6 +570,7 @@ Alpine.data('agentRunStream', (runIds) => ({
                     type: 'tool_result',
                     tool_name: e.tool_name ?? 'unknown',
                     successful: e.successful ?? true,
+                    error: e.error ?? null,
                 });
             });
 
@@ -571,10 +593,23 @@ Alpine.data('agentRunStream', (runIds) => ({
     getOrCreateStream(runId) {
         let stream = this.activeStreams.find(s => s.runId === runId);
         if (!stream) {
-            stream = { runId, text: '', events: [] };
+            stream = { runId, events: [], textBuffer: '', textFlushTimer: null };
             this.activeStreams.push(stream);
         }
         return stream;
+    },
+
+    summarizeArgs(toolName, args) {
+        if (!args) return null;
+        switch (toolName) {
+            case 'GlobTool': return args.pattern || null;
+            case 'GrepTool': return args.pattern || null;
+            case 'ReadTool': return args.file_path || null;
+            case 'EditTool': return args.file_path || null;
+            case 'WriteTool': return args.file_path || null;
+            case 'BashTool': return args.command ? args.command.substring(0, 80) : null;
+            default: return null;
+        }
     },
 
     removeStream(runId) {
