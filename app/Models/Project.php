@@ -15,6 +15,7 @@ class Project extends Model
 
     protected $fillable = [
         'repo',
+        'path',
         'source',
         'agent_name',
         'agent_executor',
@@ -45,7 +46,7 @@ class Project extends Model
      */
     protected function path(): Attribute
     {
-        return Attribute::get(fn () => storage_path("repos/{$this->repo}"));
+        return Attribute::get(fn ($value) => $value ?: storage_path("repos/{$this->repo}"));
     }
 
     /**
