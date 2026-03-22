@@ -2,6 +2,7 @@
 
 use App\Enums\FilterOperator;
 use App\Models\Project;
+use Illuminate\Support\Facades\Auth;
 use App\Services\ConfigWriter;
 use App\Services\DefaultRulesService;
 use App\Services\GitHubApiClient;
@@ -20,9 +21,9 @@ new #[Title('Config Editor')] class extends Component {
     public array $originalConfigData = [];
     public int $loadedMtime = 0;
 
-    // API key (stored encrypted in DB, not in dispatch.yml)
-    public string $apiKey = '';
-    public bool $hasApiKey = false;
+    // Per-provider API keys (stored encrypted in DB, not in dispatch.yml)
+    public array $providerKeys = [];
+    public array $storedProviderKeys = [];
 
     // UI state
     public string $statusMessage = '';
@@ -41,6 +42,25 @@ new #[Title('Config Editor')] class extends Component {
     public function project(): Project
     {
         return Project::findOrFail($this->projectId);
+    }
+
+    #[Computed]
+    public function providers(): array
+    {
+        return config('dispatch.providers', []);
+    }
+
+    #[Computed]
+    public function configuredProviders(): array
+    {
+        $userKeys = Auth::user()?->api_keys ?? [];
+        $projectSecrets = $this->project->agent_secrets ?? [];
+
+        return array_filter(
+            $this->providers,
+            fn ($provider, $providerId) => ! empty($projectSecrets[$providerId]) || ! empty($userKeys[$providerId]),
+            ARRAY_FILTER_USE_BOTH
+        );
     }
 
     #[Computed]
@@ -148,9 +168,14 @@ new #[Title('Config Editor')] class extends Component {
         $this->showMtimeConflict = false;
         $this->errorMessage = '';
 
-        // Load API key status from encrypted DB column
-        $this->hasApiKey = ! empty($project->agent_secrets['api_key']);
-        $this->apiKey = '';
+        // Load per-provider key status from encrypted DB column
+        $secrets = $project->agent_secrets ?? [];
+        $this->storedProviderKeys = [];
+        $this->providerKeys = [];
+        foreach (array_keys(config('dispatch.providers', [])) as $providerId) {
+            $this->storedProviderKeys[$providerId] = ! empty($secrets[$providerId]);
+            $this->providerKeys[$providerId] = '';
+        }
     }
 
     public function generateDefaultRules(): void
@@ -207,9 +232,11 @@ new #[Title('Config Editor')] class extends Component {
         }
     }
 
-    public function saveApiKey(): void
+    public function saveProviderKey(string $provider): void
     {
-        if (empty($this->apiKey)) {
+        $key = $this->providerKeys[$provider] ?? '';
+
+        if (empty($key)) {
             $this->errorMessage = 'API key cannot be empty.';
 
             return;
@@ -217,22 +244,37 @@ new #[Title('Config Editor')] class extends Component {
 
         $project = $this->project;
         $secrets = $project->agent_secrets ?? [];
-        $secrets['api_key'] = $this->apiKey;
+        $secrets[$provider] = $key;
         $project->update(['agent_secrets' => $secrets]);
 
-        $this->hasApiKey = true;
-        $this->apiKey = '';
-        $this->statusMessage = 'API key saved.';
+        $this->storedProviderKeys[$provider] = true;
+        $this->providerKeys[$provider] = '';
+        $this->statusMessage = ($this->providers[$provider]['label'] ?? $provider) . ' key saved.';
+        unset($this->configuredProviders);
     }
 
-    public function clearApiKey(): void
+    public function clearProviderKey(string $provider): void
     {
         $project = $this->project;
-        $project->update(['agent_secrets' => null]);
+        $secrets = $project->agent_secrets ?? [];
+        unset($secrets[$provider]);
+        $project->update(['agent_secrets' => empty($secrets) ? null : $secrets]);
 
-        $this->hasApiKey = false;
-        $this->apiKey = '';
-        $this->statusMessage = 'API key cleared.';
+        $this->storedProviderKeys[$provider] = false;
+        $this->providerKeys[$provider] = '';
+        $this->statusMessage = ($this->providers[$provider]['label'] ?? $provider) . ' key cleared.';
+        unset($this->configuredProviders);
+
+        // Reset project provider if the cleared key was the selected provider and no user key exists
+        $projectProvider = $this->configData['agent']['provider'] ?? '';
+        if ($projectProvider === $provider) {
+            $userKeys = Auth::user()?->api_keys ?? [];
+            if (empty($userKeys[$provider])) {
+                $this->configData['agent']['provider'] = '';
+                $this->configData['agent']['model'] = '';
+                unset($this->isDirty, $this->yamlPreview);
+            }
+        }
     }
 
     public function reloadConfig(): void
@@ -809,47 +851,67 @@ new #[Title('Config Editor')] class extends Component {
                                 size="sm"
                                 readonly
                             />
-                            <flux:input
+                            <flux:select
                                 label="{{ __('Provider') }}"
-                                wire:model.live.debounce.300ms="configData.agent.provider"
-                                placeholder="anthropic"
+                                wire:model.live="configData.agent.provider"
                                 size="sm"
-                            />
-                            <flux:input
+                            >
+                                <flux:select.option value="">{{ __('User default') }}</flux:select.option>
+                                @foreach ($this->configuredProviders as $providerId => $provider)
+                                    <flux:select.option value="{{ $providerId }}">{{ $provider['label'] }}</flux:select.option>
+                                @endforeach
+                            </flux:select>
+                            @php
+                                $selectedProvider = $configData['agent']['provider'] ?? '';
+                                $availableModels = $selectedProvider ? ($this->providers[$selectedProvider]['models'] ?? []) : [];
+                            @endphp
+                            <flux:select
                                 label="{{ __('Model') }}"
-                                wire:model.live.debounce.300ms="configData.agent.model"
-                                placeholder="claude-sonnet-4-6"
+                                wire:model.live="configData.agent.model"
                                 size="sm"
-                            />
+                            >
+                                <flux:select.option value="">{{ __('User default') }}</flux:select.option>
+                                @foreach ($availableModels as $modelId => $modelName)
+                                    <flux:select.option value="{{ $modelId }}">{{ $modelName }}</flux:select.option>
+                                @endforeach
+                            </flux:select>
                         </div>
 
-                        {{-- API Key --}}
+                        {{-- Per-Provider API Keys --}}
                         <div class="mt-4 pt-4 border-t border-zinc-200 dark:border-zinc-700">
                             <div class="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400 font-medium mb-2">
-                                {{ __('API Key') }}
+                                {{ __('API Keys (Project Override)') }}
                             </div>
-                            @if ($hasApiKey)
-                                <div class="flex items-center gap-2">
-                                    <flux:badge color="green" size="sm">{{ __('Configured') }}</flux:badge>
-                                    <flux:button size="sm" variant="ghost" wire:click="clearApiKey" wire:confirm="Remove the API key? Agent runs will fail until a new key is set.">
-                                        {{ __('Clear') }}
-                                    </flux:button>
-                                </div>
-                            @else
-                                <div class="flex items-center gap-2">
-                                    <flux:input
-                                        type="password"
-                                        wire:model="apiKey"
-                                        placeholder="sk-ant-..."
-                                        size="sm"
-                                        class="flex-1"
-                                    />
-                                    <flux:button size="sm" variant="primary" wire:click="saveApiKey">
-                                        {{ __('Save') }}
-                                    </flux:button>
-                                </div>
-                                <flux:text variant="subtle" class="text-xs mt-1">{{ __('Encrypted at rest. Required for agent execution.') }}</flux:text>
-                            @endif
+                            <flux:text variant="subtle" class="text-xs mb-3">{{ __('Override user-level keys for this project. Encrypted at rest.') }}</flux:text>
+
+                            <div class="space-y-3">
+                                @foreach ($this->providers as $providerId => $provider)
+                                    <div>
+                                        <div class="text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">{{ $provider['label'] }}</div>
+                                        @if ($storedProviderKeys[$providerId] ?? false)
+                                            <div class="flex items-center gap-2">
+                                                <flux:badge color="green" size="sm">{{ __('Configured') }}</flux:badge>
+                                                <flux:button size="sm" variant="ghost" wire:click="clearProviderKey('{{ $providerId }}')" wire:confirm="Remove this API key?">
+                                                    {{ __('Clear') }}
+                                                </flux:button>
+                                            </div>
+                                        @else
+                                            <div class="flex items-center gap-2">
+                                                <flux:input
+                                                    type="password"
+                                                    wire:model="providerKeys.{{ $providerId }}"
+                                                    placeholder="{{ __('Enter API key...') }}"
+                                                    size="sm"
+                                                    class="flex-1"
+                                                />
+                                                <flux:button size="sm" variant="primary" wire:click="saveProviderKey('{{ $providerId }}')">
+                                                    {{ __('Save') }}
+                                                </flux:button>
+                                            </div>
+                                        @endif
+                                    </div>
+                                @endforeach
+                            </div>
                         </div>
                     </div>
 
@@ -1028,18 +1090,30 @@ new #[Title('Config Editor')] class extends Component {
                                                 </summary>
                                                 <div class="mt-3 space-y-3">
                                                     <div class="grid grid-cols-2 gap-3">
-                                                        <flux:input
+                                                        <flux:select
                                                             label="{{ __('Agent Provider Override') }}"
-                                                            wire:model.live.debounce.300ms="configData.rules.{{ $ruleIndex }}.agent.provider"
-                                                            placeholder="{{ __('Inherit from defaults') }}"
+                                                            wire:model.live="configData.rules.{{ $ruleIndex }}.agent.provider"
                                                             size="sm"
-                                                        />
-                                                        <flux:input
+                                                        >
+                                                            <flux:select.option value="">{{ __('Inherit from defaults') }}</flux:select.option>
+                                                            @foreach ($this->configuredProviders as $ruleProviderId => $ruleProvider)
+                                                                <flux:select.option value="{{ $ruleProviderId }}">{{ $ruleProvider['label'] }}</flux:select.option>
+                                                            @endforeach
+                                                        </flux:select>
+                                                        @php
+                                                            $ruleSelectedProvider = $configData['rules'][$ruleIndex]['agent']['provider'] ?? '';
+                                                            $ruleAvailableModels = $ruleSelectedProvider ? ($this->providers[$ruleSelectedProvider]['models'] ?? []) : [];
+                                                        @endphp
+                                                        <flux:select
                                                             label="{{ __('Agent Model Override') }}"
-                                                            wire:model.live.debounce.300ms="configData.rules.{{ $ruleIndex }}.agent.model"
-                                                            placeholder="{{ __('Inherit from defaults') }}"
+                                                            wire:model.live="configData.rules.{{ $ruleIndex }}.agent.model"
                                                             size="sm"
-                                                        />
+                                                        >
+                                                            <flux:select.option value="">{{ __('Inherit from defaults') }}</flux:select.option>
+                                                            @foreach ($ruleAvailableModels as $ruleModelId => $ruleModelName)
+                                                                <flux:select.option value="{{ $ruleModelId }}">{{ $ruleModelName }}</flux:select.option>
+                                                            @endforeach
+                                                        </flux:select>
                                                     </div>
                                                     <flux:input
                                                         label="{{ __('Tools (comma-separated)') }}"
