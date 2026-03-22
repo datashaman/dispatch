@@ -23,6 +23,7 @@ class Project extends Model
         'agent_model',
         'agent_instructions_file',
         'agent_secrets',
+        'stitch_project_id',
         'cache_config',
         'enabled',
         'monthly_budget',
