@@ -44,6 +44,7 @@ Dispatch is a self-hosted webhook server that receives GitHub webhook events and
 | `PromptRenderer` | Template rendering with dot notation for event variables |
 | `WorktreeManager` | Creates isolated git worktrees for agent execution |
 | `ToolRegistry` | Resolves available tools for agents |
+| `StitchBridge` | Wraps Node.js Stitch SDK bridge — generate, edit, create-project with BYOK key resolution |
 
 ## Coding Standards
 
@@ -63,9 +64,9 @@ Use `GitHubApiClient` for all GitHub API interactions (comments, reactions). It 
 
 Projects can define rules in a `dispatch.yml` file at the repo root. The config syncer imports/exports between this file and the database. See `dispatch.yml` in this repo for a working example with rules for issue triage, implementation, interactive Q&A, and code review response.
 
-## Stitch Integration (Spike)
+## Stitch Integration
 
-`tools/stitch/` contains a Node.js bridge for Google Stitch SDK — AI-powered UI generation. See `tools/stitch/README.md` for setup, usage, and the two-agent pipeline (designer → implementer). Triggered by the `stitch-design` label on issues. Requires `STITCH_API_KEY` env var.
+`tools/stitch/` contains a Node.js bridge for Google Stitch SDK — AI-powered UI generation. Agents use `StitchGenerate` and `StitchEdit` tools (registered in `ToolRegistry`). `StitchBridge` PHP service handles the Node.js bridge, lazy Stitch project creation, and BYOK key resolution (project `agent_secrets['stitch']` → user `api_keys['stitch']`). Triggered by the `stitch-design` label on issues. See `tools/stitch/README.md` for setup and the two-agent pipeline (designer → implementer).
 
 ## Design System
 Always read DESIGN.md before making any visual or UI decisions.

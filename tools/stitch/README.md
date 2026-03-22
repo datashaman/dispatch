@@ -1,6 +1,6 @@
 # Stitch Bridge
 
-Node.js CLI bridge for [Google Stitch SDK](https://github.com/google-labs-code/stitch-sdk) — generates and edits UI screens programmatically. Called by Dispatch agents via the Bash tool.
+Node.js CLI bridge for [Google Stitch SDK](https://github.com/google-labs-code/stitch-sdk) — generates and edits UI screens programmatically. Called by Dispatch's `StitchBridge` PHP service via `Process::run()`.
 
 ## Setup
 
@@ -9,9 +9,30 @@ cd tools/stitch
 npm install
 ```
 
-Requires `STITCH_API_KEY` environment variable (get one from [stitch.withgoogle.com](https://stitch.withgoogle.com)).
+## API Key Management (BYOK)
 
-## Usage
+Stitch API keys follow the same BYOK (Bring Your Own Key) pattern as AI provider keys:
+
+1. **User-level**: Settings → API Keys → Stitch. This is the primary place to configure your key.
+2. **Project-level override**: Projects → Edit → Stitch API Key. Overrides the user-level key for this project only.
+
+The resolution cascade is: project `agent_secrets['stitch']` → user `api_keys['stitch']` → error.
+
+The `.env` `STITCH_API_KEY` is for local development/testing of the bridge CLI only — it is **not** used by the production key resolution.
+
+## Stitch Project Lifecycle
+
+Each Dispatch Project gets its own Stitch project. The `stitch_project_id` is stored on the `projects` table and created automatically on first use:
+
+1. Agent rule fires with `StitchGenerate` tool
+2. `StitchBridge` checks `Project.stitch_project_id`
+3. If null → calls `create-project` to create a new Stitch project (title = `owner/repo`)
+4. Stores the returned ID on the Project model
+5. Subsequent runs reuse the cached ID
+
+No manual Stitch project setup is needed.
+
+## CLI Usage
 
 ### Generate a screen
 
@@ -29,6 +50,12 @@ node stitch-bridge.js generate \
 node stitch-bridge.js edit \
   --screen "scr_xyz789" \
   --prompt "Add a forgot password link below the form"
+```
+
+### Create a project
+
+```bash
+node stitch-bridge.js create-project --title "owner/repo"
 ```
 
 ### Output format
@@ -49,10 +76,20 @@ All output is JSON to stdout. Errors go to stderr with exit code 1.
 | Flag | Required | Description |
 |------|----------|-------------|
 | `--project` | generate | Stitch project ID |
-| `--prompt` | both | Design prompt |
+| `--prompt` | generate, edit | Design prompt |
 | `--vibe` | no | Design system context (e.g. DESIGN.md content) |
 | `--device` | no | `DESKTOP` (default), `MOBILE`, `TABLET`, `AGNOSTIC` |
 | `--screen` | edit | Screen ID to modify |
+| `--title` | create-project | Title for the new Stitch project |
+
+## Agent Tools
+
+Agents use Stitch via registered tools (no raw Bash calls needed):
+
+- **`StitchGenerate`** — Generate a UI screen. Accepts `prompt`, `device`, `vibe`. Project ID and API key resolved automatically.
+- **`StitchEdit`** — Edit an existing screen. Accepts `screen_id`, `prompt`.
+
+These tools are registered in `ToolRegistry` and available when included in a rule's `tools` list.
 
 ## Pipeline
 
@@ -63,7 +100,7 @@ GitHub Issue (label: stitch-design)
     │
     ▼
 stitch-designer agent
-    │  Calls stitch-bridge.js generate
+    │  Uses StitchGenerate tool
     │  Outputs HTML with markers:
     │    <!-- STITCH_SCREENSHOT: url -->
     │    <!-- STITCH_HTML_START -->
@@ -75,7 +112,7 @@ stitch-implementer agent (depends_on: stitch-designer)
     │  Receives designer output via upstream_outputs
     │  Extracts HTML + screenshot via regex
     │  Translates to Blade/Livewire + Tailwind
-    │  Creates PR
+    │  Creates PR (has StitchEdit for iteration)
     ▼
 ```
 
@@ -85,16 +122,7 @@ stitch-implementer agent (depends_on: stitch-designer)
 node --test stitch-bridge.test.js
 ```
 
-12 tests: 7 CLI validation + 5 marker format extraction.
-
 ## Security
 
-- `STITCH_API_KEY` is read from `process.env` only — never passed via CLI args (would leak into agent_runs.steps)
+- `STITCH_API_KEY` is injected via `process.env` by the PHP service — never passed via CLI args (would leak into agent_runs.steps)
 - The bridge never writes files — JSON-only stdout
-
-## Phases
-
-This is the **Phase 1 spike**. See TODOS.md for Phase 2 (thin slice) scope:
-- StitchDesignExecutor (procedural executor)
-- StitchGenerateTool + StitchEditTool in ToolRegistry
-- BYOK support for STITCH_API_KEY

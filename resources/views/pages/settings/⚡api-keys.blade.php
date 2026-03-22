@@ -25,6 +25,9 @@ new #[Title('API Keys & Defaults')] class extends Component {
             $this->providerKeys[$providerId] = '';
         }
 
+        // Stitch key (not an AI provider, managed separately)
+        $this->providerKeys['stitch'] = '';
+
         $this->defaultProvider = $user->default_provider ?? '';
         $this->defaultModel = $user->default_model ?? '';
     }
@@ -44,6 +47,9 @@ new #[Title('API Keys & Defaults')] class extends Component {
         foreach ($this->providers as $providerId => $provider) {
             $result[$providerId] = ! empty($keys[$providerId]);
         }
+
+        // Stitch key (not an AI provider, managed separately)
+        $result['stitch'] = ! empty($keys['stitch']);
 
         return $result;
     }
@@ -82,7 +88,8 @@ new #[Title('API Keys & Defaults')] class extends Component {
         $user->update(['api_keys' => $keys]);
 
         $this->providerKeys[$provider] = '';
-        $this->statusMessage = $this->providers[$provider]['label'] . ' key saved.';
+        $label = $this->providers[$provider]['label'] ?? ucfirst($provider);
+        $this->statusMessage = $label . ' key saved.';
         unset($this->storedKeys, $this->configuredProviders);
     }
 
@@ -93,7 +100,8 @@ new #[Title('API Keys & Defaults')] class extends Component {
         unset($keys[$provider]);
         $user->update(['api_keys' => empty($keys) ? null : $keys]);
 
-        $this->statusMessage = $this->providers[$provider]['label'] . ' key cleared.';
+        $label = $this->providers[$provider]['label'] ?? ucfirst($provider);
+        $this->statusMessage = $label . ' key cleared.';
         unset($this->storedKeys, $this->configuredProviders);
 
         // Reset default provider if the cleared key was the selected default
@@ -178,7 +186,7 @@ new #[Title('API Keys & Defaults')] class extends Component {
 
         {{-- Per-Provider API Keys --}}
         <div class="my-6 space-y-4">
-            <flux:heading size="sm">{{ __('API Keys') }}</flux:heading>
+            <flux:heading size="sm">{{ __('AI Provider Keys') }}</flux:heading>
             <flux:subheading>{{ __('Enter your API keys for each provider. Keys are encrypted at rest. Projects can override these with their own keys.') }}</flux:subheading>
 
             <div class="space-y-5 mt-3">
@@ -216,6 +224,43 @@ new #[Title('API Keys & Defaults')] class extends Component {
                         @endif
                     </div>
                 @endforeach
+            </div>
+        </div>
+
+        <flux:separator />
+
+        {{-- Stitch API Key --}}
+        <div class="my-6 space-y-4">
+            <flux:heading size="sm">{{ __('Stitch (Google UI Generation)') }}</flux:heading>
+            <flux:subheading>{{ __('API key for Google Stitch UI generation. Get one from stitch.withgoogle.com. Used by StitchGenerate and StitchEdit agent tools.') }}</flux:subheading>
+
+            <div class="space-y-1 mt-3">
+                @if ($this->storedKeys['stitch'] ?? false)
+                    <div class="flex items-center gap-2">
+                        <flux:badge color="green" size="sm">{{ __('Configured') }}</flux:badge>
+                        <flux:button
+                            size="sm"
+                            variant="ghost"
+                            wire:click="clearKey('stitch')"
+                            wire:confirm="{{ __('Remove Stitch API key?') }}"
+                        >
+                            {{ __('Clear') }}
+                        </flux:button>
+                    </div>
+                @else
+                    <div class="flex items-center gap-2">
+                        <flux:input
+                            type="password"
+                            wire:model="providerKeys.stitch"
+                            placeholder="{{ __('Enter Stitch API key...') }}"
+                            size="sm"
+                            class="flex-1"
+                        />
+                        <flux:button size="sm" variant="primary" wire:click="saveKey('stitch')">
+                            {{ __('Save') }}
+                        </flux:button>
+                    </div>
+                @endif
             </div>
         </div>
     </x-pages::settings.layout>

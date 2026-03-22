@@ -35,6 +35,10 @@ return [
         ],
     ],
 
+    'stitch' => [
+        'bridge_path' => base_path('tools/stitch/stitch-bridge.js'),
+    ],
+
     'github' => [
         'webhook_secret' => env('GITHUB_WEBHOOK_SECRET'),
         'verify_webhook_signature' => env('VERIFY_WEBHOOK_SIGNATURE', true),

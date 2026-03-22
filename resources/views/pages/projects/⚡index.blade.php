@@ -240,6 +240,8 @@ new #[Title('Projects')] class extends Component {
         }
     }
 
+    public ?string $editStitchProjectId = null;
+
     public function editProject(int $id): void
     {
         $project = Project::findOrFail($id);
@@ -249,6 +251,7 @@ new #[Title('Projects')] class extends Component {
         $this->editAgentModel = $project->agent_model;
         $this->editAgentInstructionsFile = $project->agent_instructions_file;
         $this->editCacheConfig = (bool) $project->cache_config;
+        $this->editStitchProjectId = $project->stitch_project_id;
 
         $secrets = $project->agent_secrets ?? [];
         $this->storedProviderKeys = [];
@@ -257,6 +260,10 @@ new #[Title('Projects')] class extends Component {
             $this->storedProviderKeys[$providerId] = ! empty($secrets[$providerId]);
             $this->providerKeys[$providerId] = '';
         }
+
+        // Stitch key override at project level
+        $this->storedProviderKeys['stitch'] = ! empty($secrets['stitch']);
+        $this->providerKeys['stitch'] = '';
 
         $this->showEditForm = true;
     }
@@ -293,7 +300,8 @@ new #[Title('Projects')] class extends Component {
 
         $this->storedProviderKeys[$provider] = true;
         $this->providerKeys[$provider] = '';
-        $this->statusMessage = ($this->getProviders()[$provider]['label'] ?? $provider) . ' key saved.';
+        $label = $this->getProviders()[$provider]['label'] ?? ucfirst($provider);
+        $this->statusMessage = $label . ' key saved.';
     }
 
     public function clearProviderKey(string $provider): void
@@ -305,7 +313,8 @@ new #[Title('Projects')] class extends Component {
 
         $this->storedProviderKeys[$provider] = false;
         $this->providerKeys[$provider] = '';
-        $this->statusMessage = ($this->getProviders()[$provider]['label'] ?? $provider) . ' key cleared.';
+        $label = $this->getProviders()[$provider]['label'] ?? ucfirst($provider);
+        $this->statusMessage = $label . ' key cleared.';
     }
 
     public function removeProject(int $id): void
@@ -550,6 +559,55 @@ new #[Title('Projects')] class extends Component {
                             @endif
                         </div>
                     @endforeach
+                </div>
+
+                <flux:separator />
+
+                <flux:heading size="sm">{{ __('Stitch (UI Generation)') }}</flux:heading>
+
+                <div class="space-y-3">
+                    <div>
+                        <div class="text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">{{ __('Stitch Project ID') }}</div>
+                        @if ($editStitchProjectId)
+                            <flux:badge color="blue" size="sm">{{ $editStitchProjectId }}</flux:badge>
+                        @else
+                            <flux:text variant="subtle" class="text-xs">{{ __('Will be created automatically on first use.') }}</flux:text>
+                        @endif
+                    </div>
+
+                    <div>
+                        <div class="text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">{{ __('Stitch API Key (override)') }}</div>
+                        @if ($storedProviderKeys['stitch'] ?? false)
+                            <div class="flex items-center gap-2">
+                                <flux:badge color="green" size="sm">{{ __('Configured') }}</flux:badge>
+                                <flux:button size="sm" variant="ghost" wire:click="clearProviderKey('stitch')" wire:confirm="Remove Stitch API key override?">
+                                    {{ __('Clear') }}
+                                </flux:button>
+                            </div>
+                        @else
+                            <div class="flex items-center gap-2">
+                                <flux:input
+                                    type="password"
+                                    wire:model="providerKeys.stitch"
+                                    placeholder="{{ __('Enter Stitch API key...') }}"
+                                    size="sm"
+                                    class="flex-1"
+                                />
+                                <flux:button size="sm" variant="primary" wire:click="saveProviderKey('stitch')">
+                                    {{ __('Save') }}
+                                </flux:button>
+                            </div>
+                            @php $hasUserStitchKey = ! empty(Auth::user()->api_keys['stitch'] ?? null); @endphp
+                            <flux:text variant="subtle" class="text-xs mt-1">
+                                {{ __('Optional. Falls back to your user-level Stitch key') }}
+                                @if ($hasUserStitchKey)
+                                    <flux:badge color="green" size="sm" class="ml-1">{{ __('configured') }}</flux:badge>
+                                @else
+                                    <flux:badge color="zinc" size="sm" class="ml-1">{{ __('not configured') }}</flux:badge>
+                                @endif
+                            </flux:text>
+                        @endif
+                    </div>
                 </div>
             </div>
 

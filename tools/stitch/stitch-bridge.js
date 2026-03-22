@@ -10,6 +10,7 @@
  * Usage:
  *   node stitch-bridge.js generate --project <id> --prompt <text> [--vibe <text>] [--device <type>]
  *   node stitch-bridge.js edit --screen <id> --prompt <text>
+ *   node stitch-bridge.js create-project --title <text>
  *
  * Environment:
  *   STITCH_API_KEY — required, read from process.env (never passed via CLI args)
@@ -23,6 +24,7 @@ function usage() {
   console.error(`Usage:
   stitch-bridge.js generate --project <id> --prompt <text> [--vibe <text>] [--device <type>]
   stitch-bridge.js edit --screen <id> --prompt <text>
+  stitch-bridge.js create-project --title <text>
 
 Device types: ${VALID_DEVICES.join(', ')}
 Requires STITCH_API_KEY environment variable.`);
@@ -45,6 +47,33 @@ function parseArgs(argv) {
   }
 
   return { command, args };
+}
+
+/**
+ * Read JSON from stdin if available. Merges with CLI args (stdin wins).
+ * This avoids OS argument length limits for long values like prompts and vibe.
+ */
+async function readStdin() {
+  if (process.stdin.isTTY) return {};
+
+  return new Promise((resolve) => {
+    let data = '';
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', (chunk) => { data += chunk; });
+    process.stdin.on('end', () => {
+      if (!data.trim()) return resolve({});
+      try {
+        resolve(JSON.parse(data));
+      } catch {
+        resolve({});
+      }
+    });
+    // Timeout after 100ms if no stdin data arrives
+    setTimeout(() => {
+      process.stdin.destroy();
+      resolve({});
+    }, 100);
+  });
 }
 
 async function fetchUrl(url) {
@@ -153,10 +182,36 @@ async function edit(client, args) {
   };
 }
 
+async function createProject(client, args) {
+  const { title } = args;
+
+  if (!title) throw new Error('Missing required --title argument');
+
+  const result = await client.callTool('create_project', {
+    title,
+  });
+
+  const data = result?.content?.[0]?.text ? JSON.parse(result.content[0].text) : result;
+  const projectId = data.projectId || data.project_id || data.id;
+
+  if (!projectId) {
+    throw new Error('Stitch returned no project ID — creation may have failed');
+  }
+
+  return {
+    project_id: projectId,
+    title,
+  };
+}
+
 async function main() {
   const { command, args } = parseArgs(process.argv);
 
   if (!command) usage();
+
+  // Merge stdin JSON with CLI args (stdin wins for long values like prompt, vibe)
+  const stdinData = await readStdin();
+  Object.assign(args, stdinData);
 
   if (!process.env.STITCH_API_KEY) {
     console.error('Error: STITCH_API_KEY environment variable is required');
@@ -176,6 +231,9 @@ async function main() {
         break;
       case 'edit':
         result = await edit(client, args);
+        break;
+      case 'create-project':
+        result = await createProject(client, args);
         break;
       default:
         console.error(`Unknown command: ${command}`);

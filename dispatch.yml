@@ -155,21 +155,17 @@ rules:
       Steps:
       1. Read DESIGN.md from the repo root (if it exists) to understand the project's design system
       2. Craft a clear, specific UI prompt based on the issue description
-      3. Run the Stitch bridge to generate the design:
-         ```
-         node tools/stitch/stitch-bridge.js generate \
-           --project "$STITCH_PROJECT_ID" \
-           --prompt "YOUR PROMPT HERE" \
-           --vibe "$(cat DESIGN.md 2>/dev/null || echo '')" \
-           --device DESKTOP
-         ```
-      4. Parse the JSON output to extract html and screenshot_url
+      3. Use the StitchGenerate tool to generate the design:
+         - Pass the issue description as the prompt
+         - If DESIGN.md exists, pass its content as the vibe parameter
+         - Use DESKTOP as the device type
+      4. From the tool result, extract html and screenshot_url
       5. Output the design using these EXACT markers (the coding agent depends on them):
 
-      <!-- STITCH_SCREENSHOT: {screenshot_url from JSON} -->
+      <!-- STITCH_SCREENSHOT: {screenshot_url from result} -->
 
       <!-- STITCH_HTML_START -->
-      {html from JSON}
+      {html from result}
       <!-- STITCH_HTML_END -->
 
       Include a brief description of the design decisions you made.
@@ -185,7 +181,7 @@ rules:
     agent:
       tools:
         - Read
-        - Bash
+        - StitchGenerate
   -
     id: stitch-implementer
     event: issues.labeled
@@ -236,4 +232,5 @@ rules:
         - Bash
         - Glob
         - Grep
+        - StitchEdit
       isolation: true
