@@ -821,7 +821,7 @@ new #[Title('Config Editor')] class extends Component {
                                 size="sm"
                             >
                                 <flux:select.option value="">{{ $userProvider ? __('User default') . ' (' . ($this->providers[$userProvider]['label'] ?? $userProvider) . ')' : __('None') }}</flux:select.option>
-                                @foreach ($this->configuredProviders as $providerId => $provider)
+                                @foreach ($this->providers as $providerId => $provider)
                                     <flux:select.option value="{{ $providerId }}">{{ $provider['label'] }}</flux:select.option>
                                 @endforeach
                             </flux:select>
@@ -1026,7 +1026,7 @@ new #[Title('Config Editor')] class extends Component {
                                                             size="sm"
                                                         >
                                                             <flux:select.option value="">{{ __('Inherit from defaults') }}</flux:select.option>
-                                                            @foreach ($this->configuredProviders as $ruleProviderId => $ruleProvider)
+                                                            @foreach ($this->providers as $ruleProviderId => $ruleProvider)
                                                                 <flux:select.option value="{{ $ruleProviderId }}">{{ $ruleProvider['label'] }}</flux:select.option>
                                                             @endforeach
                                                         </flux:select>

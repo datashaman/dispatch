@@ -542,18 +542,9 @@ new #[Title('Projects')] class extends Component {
                 <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <flux:field>
                         <flux:label>{{ __('Provider') }}</flux:label>
-                        @php
-                            $userKeys = Auth::user()?->api_keys ?? [];
-                            $projectSecrets = Project::find($editingProjectId)?->agent_secrets ?? [];
-                            $availableProviders = array_filter(
-                                $this->getProviders(),
-                                fn ($p, $id) => ! empty($projectSecrets[$id]) || ! empty($userKeys[$id]),
-                                ARRAY_FILTER_USE_BOTH
-                            );
-                        @endphp
                         <flux:select wire:model.live="editAgentProvider">
                             <flux:select.option value="">{{ __('None') }}</flux:select.option>
-                            @foreach ($availableProviders as $key => $provider)
+                            @foreach ($this->getProviders() as $key => $provider)
                                 <flux:select.option value="{{ $key }}">{{ $provider['label'] }}</flux:select.option>
                             @endforeach
                         </flux:select>
