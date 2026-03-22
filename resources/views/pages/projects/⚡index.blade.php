@@ -16,10 +16,7 @@ use Livewire\Component;
 new #[Title('Projects')] class extends Component {
     public bool $showEditForm = false;
     public ?int $editingProjectId = null;
-    public string $editRepo = '';
-    public string $editPath = '';
     public ?string $editAgentName = null;
-    public ?string $editAgentExecutor = null;
     public ?string $editAgentProvider = null;
     public ?string $editAgentModel = null;
     public ?string $editAgentInstructionsFile = null;
@@ -247,10 +244,7 @@ new #[Title('Projects')] class extends Component {
     {
         $project = Project::findOrFail($id);
         $this->editingProjectId = $project->id;
-        $this->editRepo = $project->repo;
-        $this->editPath = $project->path;
         $this->editAgentName = $project->agent_name;
-        $this->editAgentExecutor = $project->agent_executor;
         $this->editAgentProvider = $project->agent_provider;
         $this->editAgentModel = $project->agent_model;
         $this->editAgentInstructionsFile = $project->agent_instructions_file;
@@ -269,25 +263,10 @@ new #[Title('Projects')] class extends Component {
 
     public function updateProject(): void
     {
-        $this->validate([
-            'editRepo' => ['required', 'string', 'unique:projects,repo,'.$this->editingProjectId],
-            'editPath' => ['required', 'string'],
-        ], [
-            'editRepo.unique' => 'This repository is already registered.',
-        ]);
-
-        if (! File::isDirectory($this->editPath)) {
-            $this->addError('editPath', 'The path does not exist on disk.');
-
-            return;
-        }
-
         $project = Project::findOrFail($this->editingProjectId);
         $project->update([
-            'repo' => $this->editRepo,
-            'path' => $this->editPath,
             'agent_name' => $this->editAgentName,
-            'agent_executor' => $this->editAgentExecutor,
+            'agent_executor' => 'laravel-ai',
             'agent_provider' => $this->editAgentProvider,
             'agent_model' => $this->editAgentModel,
             'agent_instructions_file' => $this->editAgentInstructionsFile,
@@ -503,34 +482,8 @@ new #[Title('Projects')] class extends Component {
             <div class="mt-6 space-y-4">
                 <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <flux:field>
-                        <flux:label>{{ __('Repository') }}</flux:label>
-                        <flux:input wire:model="editRepo" placeholder="owner/repo" required />
-                        <flux:error name="editRepo" />
-                    </flux:field>
-
-                    <flux:field>
-                        <flux:label>{{ __('Local Path') }}</flux:label>
-                        <flux:input wire:model="editPath" placeholder="/path/to/repo" required />
-                        <flux:error name="editPath" />
-                    </flux:field>
-                </div>
-
-                <flux:separator />
-
-                <flux:heading size="sm">{{ __('Agent Defaults') }}</flux:heading>
-
-                <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                    <flux:field>
                         <flux:label>{{ __('Agent Name') }}</flux:label>
                         <flux:input wire:model="editAgentName" placeholder="e.g. sparky" />
-                    </flux:field>
-
-                    <flux:field>
-                        <flux:label>{{ __('Executor') }}</flux:label>
-                        <flux:select wire:model="editAgentExecutor">
-                            <flux:select.option value="">{{ __('None') }}</flux:select.option>
-                            <flux:select.option value="laravel-ai">{{ __('Laravel AI') }}</flux:select.option>
-                        </flux:select>
                     </flux:field>
 
                     <flux:field>
@@ -630,7 +583,6 @@ new #[Title('Projects')] class extends Component {
                             <a href="{{ route('projects.show', $project) }}" wire:navigate class="hover:underline">
                                 <flux:heading size="sm">{{ $project->repo }}</flux:heading>
                             </a>
-                            <flux:text class="mt-1 truncate font-mono text-xs">{{ $project->path }}</flux:text>
                         </div>
 
                         <div class="flex items-center gap-1">
