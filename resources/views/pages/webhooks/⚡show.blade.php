@@ -319,25 +319,20 @@ new #[Title('Webhook Log Detail')] class extends Component {
                             <flux:text class="text-sm font-medium">Agent Run #<span x-text="stream.runId"></span></flux:text>
                         </div>
 
-                        {{-- Interleaved events and text --}}
+                        {{-- Tool calls and text --}}
                         <div class="space-y-1.5 mb-3 max-h-80 overflow-y-auto">
                             <template x-for="(event, index) in stream.events" :key="index">
                                 <div>
-                                    <template x-if="event.type === 'tool_call'">
-                                        <div class="rounded bg-blue-50 dark:bg-blue-900/20 px-3 py-1.5">
+                                    <template x-if="event.type === 'tool'">
+                                        <div class="rounded px-3 py-1.5" :class="event.status === 'error' ? 'bg-red-50 dark:bg-red-900/20' : event.status === 'done' ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'bg-blue-50 dark:bg-blue-900/20'">
                                             <div class="flex items-center gap-2">
-                                                <span class="text-xs font-medium text-blue-700 dark:text-blue-300" x-text="'→ ' + event.tool_name"></span>
+                                                <span class="text-xs font-medium" :class="event.status === 'error' ? 'text-red-700 dark:text-red-300' : event.status === 'done' ? 'text-emerald-700 dark:text-emerald-300' : 'text-blue-700 dark:text-blue-300'" x-text="(event.status === 'error' ? '✗ ' : event.status === 'done' ? '✓ ' : '→ ') + event.tool_name"></span>
+                                                <template x-if="event.summary">
+                                                    <span class="text-xs font-mono opacity-70" x-text="event.summary"></span>
+                                                </template>
                                             </div>
-                                            <template x-if="event.summary">
-                                                <span class="text-xs text-blue-600/70 dark:text-blue-400/70 font-mono" x-text="event.summary"></span>
-                                            </template>
-                                        </div>
-                                    </template>
-                                    <template x-if="event.type === 'tool_result'">
-                                        <div class="rounded px-3 py-1.5" :class="event.successful !== false ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'bg-red-50 dark:bg-red-900/20'">
-                                            <span class="text-xs font-medium" :class="event.successful !== false ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'" x-text="(event.successful !== false ? '✓ ' : '✗ ') + event.tool_name"></span>
                                             <template x-if="event.error">
-                                                <span class="text-xs text-red-600 dark:text-red-400 ml-2" x-text="event.error"></span>
+                                                <div class="text-xs text-red-600 dark:text-red-400 mt-1" x-text="event.error"></div>
                                             </template>
                                         </div>
                                     </template>
@@ -559,19 +554,25 @@ Alpine.data('agentRunStream', (runIds) => ({
                     stream.textBuffer = '';
                 }
                 stream.events.push({
-                    type: 'tool_call',
+                    type: 'tool',
                     tool_name: e.tool_name ?? 'unknown',
                     summary: this.summarizeArgs(e.tool_name, e.arguments),
+                    status: 'running',
+                    error: null,
                 });
             });
 
             channel.listen('.tool_result', (e) => {
-                this.getOrCreateStream(runId).events.push({
-                    type: 'tool_result',
-                    tool_name: e.tool_name ?? 'unknown',
-                    successful: e.successful ?? true,
-                    error: e.error ?? null,
-                });
+                const stream = this.getOrCreateStream(runId);
+                const toolName = e.tool_name ?? 'unknown';
+                // Find the last matching tool call and update it
+                for (let i = stream.events.length - 1; i >= 0; i--) {
+                    if (stream.events[i].type === 'tool' && stream.events[i].tool_name === toolName && stream.events[i].status === 'running') {
+                        stream.events[i].status = (e.successful ?? true) ? 'done' : 'error';
+                        stream.events[i].error = e.error ?? null;
+                        return;
+                    }
+                }
             });
 
             channel.listen('.stream_end', () => {
@@ -580,9 +581,7 @@ Alpine.data('agentRunStream', (runIds) => ({
             });
 
             channel.listen('.AgentRunUpdated', (e) => {
-                if (['success', 'failed'].includes(e.status)) {
-                    this.removeStream(runId);
-                }
+                this.removeStream(runId);
                 this.$wire.refreshAgentRuns();
             });
 

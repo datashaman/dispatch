@@ -34,7 +34,6 @@ class AgentRunUpdated implements ShouldBroadcastNow
         return [
             'id' => $this->agentRun->id,
             'status' => $this->agentRun->status,
-            'output' => $this->agentRun->output,
             'tokens_used' => $this->agentRun->tokens_used,
             'cost' => $this->agentRun->cost,
             'duration_ms' => $this->agentRun->duration_ms,

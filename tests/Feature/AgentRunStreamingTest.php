@@ -42,7 +42,7 @@ test('AgentRunUpdated includes run data in broadcast payload', function () {
 
     expect($payload['id'])->toBe($agentRun->id);
     expect($payload['status'])->toBe('success');
-    expect($payload['output'])->toBe('Agent completed.');
+    expect($payload)->not->toHaveKey('output');
     expect($payload['tokens_used'])->toBe(1500);
     expect((float) $payload['cost'])->toBe(0.0045);
     expect($payload['duration_ms'])->toBe(5000);
