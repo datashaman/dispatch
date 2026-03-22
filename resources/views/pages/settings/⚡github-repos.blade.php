@@ -2,6 +2,7 @@
 
 use App\Models\GitHubInstallation;
 use App\Models\Project;
+use Illuminate\Support\Facades\Auth;
 use App\Services\DefaultRulesService;
 use App\Services\GitHubAppService;
 use Livewire\Attributes\Computed;
@@ -158,6 +159,7 @@ new #[Title('Browse Repositories')] class extends Component {
             'repo' => $this->registerRepo,
             'path' => $this->registerPath,
             'github_installation_id' => $this->installation->id,
+            'user_id' => Auth::id(),
         ]);
 
         app(DefaultRulesService::class)->seed($project);

@@ -871,6 +871,8 @@ new #[Title('Config Editor')] class extends Component {
                                 size="sm"
                             >
                                 <flux:select.option value="">{{ __('User default') }}</flux:select.option>
+                                <flux:select.option value="cheapest">{{ __('Cheapest (auto)') }}</flux:select.option>
+                                <flux:select.option value="smartest">{{ __('Smartest (auto)') }}</flux:select.option>
                                 @foreach ($availableModels as $modelId => $modelName)
                                     <flux:select.option value="{{ $modelId }}">{{ $modelName }}</flux:select.option>
                                 @endforeach
@@ -1110,6 +1112,8 @@ new #[Title('Config Editor')] class extends Component {
                                                             size="sm"
                                                         >
                                                             <flux:select.option value="">{{ __('Inherit from defaults') }}</flux:select.option>
+                                                            <flux:select.option value="cheapest">{{ __('Cheapest (auto)') }}</flux:select.option>
+                                                            <flux:select.option value="smartest">{{ __('Smartest (auto)') }}</flux:select.option>
                                                             @foreach ($ruleAvailableModels as $ruleModelId => $ruleModelName)
                                                                 <flux:select.option value="{{ $ruleModelId }}">{{ $ruleModelName }}</flux:select.option>
                                                             @endforeach

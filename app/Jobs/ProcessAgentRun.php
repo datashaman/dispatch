@@ -10,7 +10,6 @@ use App\Events\AgentRunUpdated;
 use App\Executors\LaravelAiExecutor;
 use App\Models\AgentRun;
 use App\Models\Project;
-use App\Models\User;
 use App\Services\ConversationMemory;
 use App\Services\OutputHandler;
 use App\Services\PromptRenderer;
@@ -18,6 +17,7 @@ use App\Services\WorktreeManager;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
+use Laravel\Ai\Ai;
 
 class ProcessAgentRun implements ShouldQueue
 {
@@ -261,6 +261,15 @@ class ProcessAgentRun implements ShouldQueue
             ?? $userDefaults['model']
             ?? null;
 
+        // Resolve model strategy keywords to actual model names
+        if ($provider && in_array($model, ['cheapest', 'smartest'], true)) {
+            $sdkProvider = Ai::textProvider($provider);
+            $model = match ($model) {
+                'cheapest' => $sdkProvider->cheapestTextModel(),
+                'smartest' => $sdkProvider->smartestTextModel(),
+            };
+        }
+
         return [
             'provider' => $provider,
             'model' => $model,
@@ -297,8 +306,7 @@ class ProcessAgentRun implements ShouldQueue
 
         // User-level per-provider key
         if ($provider) {
-            $user = User::whereNotNull('api_keys')->first();
-            $userKeys = $user?->api_keys ?? [];
+            $userKeys = $this->project->user?->api_keys ?? [];
 
             if (! empty($userKeys[$provider])) {
                 return $userKeys[$provider];
@@ -315,7 +323,7 @@ class ProcessAgentRun implements ShouldQueue
      */
     protected function resolveUserDefaults(): array
     {
-        $user = User::first();
+        $user = $this->project->user;
 
         return [
             'provider' => $user?->default_provider,

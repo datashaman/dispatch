@@ -111,9 +111,11 @@ new #[Title('API Keys & Defaults')] class extends Component {
 
         // Reset model if provider changed and model doesn't belong to new provider
         if ($this->defaultProvider && $this->defaultModel) {
-            $validModels = array_keys($this->providers[$this->defaultProvider]['models'] ?? []);
-            if (! in_array($this->defaultModel, $validModels, true)) {
-                $this->defaultModel = '';
+            if (! in_array($this->defaultModel, ['cheapest', 'smartest'], true)) {
+                $validModels = array_keys($this->providers[$this->defaultProvider]['models'] ?? []);
+                if (! in_array($this->defaultModel, $validModels, true)) {
+                    $this->defaultModel = '';
+                }
             }
         }
 
@@ -158,6 +160,8 @@ new #[Title('API Keys & Defaults')] class extends Component {
                 @if ($defaultProvider && ! empty($this->modelsForProvider))
                     <flux:select wire:model="defaultModel" :label="__('Model')">
                         <flux:select.option value="">{{ __('Provider default') }}</flux:select.option>
+                        <flux:select.option value="cheapest">{{ __('Cheapest (auto)') }}</flux:select.option>
+                        <flux:select.option value="smartest">{{ __('Smartest (auto)') }}</flux:select.option>
                         @foreach ($this->modelsForProvider as $modelId => $modelName)
                             <flux:select.option value="{{ $modelId }}">{{ $modelName }}</flux:select.option>
                         @endforeach

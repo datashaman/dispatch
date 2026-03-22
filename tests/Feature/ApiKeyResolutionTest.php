@@ -27,13 +27,14 @@ beforeEach(function () {
 });
 
 test('resolveApiKey returns project-level per-provider key first', function () {
+    $user = User::factory()->create([
+        'api_keys' => ['anthropic' => 'sk-user-anthropic'],
+    ]);
+
     $project = Project::factory()->create([
         'agent_provider' => 'anthropic',
         'agent_secrets' => ['anthropic' => 'sk-project-anthropic'],
-    ]);
-
-    $user = User::factory()->create([
-        'api_keys' => ['anthropic' => 'sk-user-anthropic'],
+        'user_id' => $user->id,
     ]);
 
     $job = makeJob($this->agentRun, $project);
@@ -55,13 +56,14 @@ test('resolveApiKey falls back to legacy project api_key', function () {
 });
 
 test('resolveApiKey falls back to user-level key when no project key', function () {
+    $user = User::factory()->create([
+        'api_keys' => ['anthropic' => 'sk-user-anthropic'],
+    ]);
+
     $project = Project::factory()->create([
         'agent_secrets' => null,
         'agent_provider' => 'anthropic',
-    ]);
-
-    $user = User::factory()->create([
-        'api_keys' => ['anthropic' => 'sk-user-anthropic'],
+        'user_id' => $user->id,
     ]);
 
     $job = makeJob($this->agentRun, $project);
@@ -71,13 +73,15 @@ test('resolveApiKey falls back to user-level key when no project key', function 
 });
 
 test('resolveApiKey returns null when no keys configured', function () {
+    $user = User::factory()->create([
+        'api_keys' => null,
+    ]);
+
     $project = Project::factory()->create([
         'agent_secrets' => null,
         'agent_provider' => 'anthropic',
+        'user_id' => $user->id,
     ]);
-
-    // Ensure no users with keys
-    User::query()->update(['api_keys' => null]);
 
     $job = makeJob($this->agentRun, $project);
     $config = invokeResolveAgentConfig($job);
@@ -86,14 +90,15 @@ test('resolveApiKey returns null when no keys configured', function () {
 });
 
 test('resolveAgentConfig uses rule-level provider over project and user', function () {
+    $user = User::factory()->create([
+        'default_provider' => 'gemini',
+        'default_model' => 'gemini-2.5-pro',
+    ]);
+
     $project = Project::factory()->create([
         'agent_provider' => 'openai',
         'agent_model' => 'gpt-4.1',
-    ]);
-
-    User::factory()->create([
-        'default_provider' => 'gemini',
-        'default_model' => 'gemini-2.5-pro',
+        'user_id' => $user->id,
     ]);
 
     $ruleConfig = new RuleConfig(
@@ -114,14 +119,15 @@ test('resolveAgentConfig uses rule-level provider over project and user', functi
 });
 
 test('resolveAgentConfig uses project-level provider when no rule-level', function () {
+    $user = User::factory()->create([
+        'default_provider' => 'gemini',
+        'default_model' => 'gemini-2.5-pro',
+    ]);
+
     $project = Project::factory()->create([
         'agent_provider' => 'openai',
         'agent_model' => 'gpt-4.1',
-    ]);
-
-    User::factory()->create([
-        'default_provider' => 'gemini',
-        'default_model' => 'gemini-2.5-pro',
+        'user_id' => $user->id,
     ]);
 
     $job = makeJob($this->agentRun, $project);
@@ -132,14 +138,15 @@ test('resolveAgentConfig uses project-level provider when no rule-level', functi
 });
 
 test('resolveAgentConfig uses user-level defaults when no rule or project config', function () {
+    $user = User::factory()->create([
+        'default_provider' => 'gemini',
+        'default_model' => 'gemini-2.5-pro',
+    ]);
+
     $project = Project::factory()->create([
         'agent_provider' => null,
         'agent_model' => null,
-    ]);
-
-    User::factory()->create([
-        'default_provider' => 'gemini',
-        'default_model' => 'gemini-2.5-pro',
+        'user_id' => $user->id,
     ]);
 
     $job = makeJob($this->agentRun, $project);
@@ -150,14 +157,15 @@ test('resolveAgentConfig uses user-level defaults when no rule or project config
 });
 
 test('resolveAgentConfig returns null provider and model when nothing configured', function () {
+    $user = User::factory()->create([
+        'default_provider' => null,
+        'default_model' => null,
+    ]);
+
     $project = Project::factory()->create([
         'agent_provider' => null,
         'agent_model' => null,
-    ]);
-
-    User::query()->update([
-        'default_provider' => null,
-        'default_model' => null,
+        'user_id' => $user->id,
     ]);
 
     $job = makeJob($this->agentRun, $project);
@@ -184,13 +192,14 @@ test('user api_keys are encrypted at rest', function () {
 });
 
 test('resolveApiKey matches key to resolved provider', function () {
+    $user = User::factory()->create([
+        'api_keys' => ['anthropic' => 'sk-user-anthropic'],
+    ]);
+
     $project = Project::factory()->create([
         'agent_secrets' => ['openai' => 'sk-openai-project'],
         'agent_provider' => 'openai',
-    ]);
-
-    $user = User::factory()->create([
-        'api_keys' => ['anthropic' => 'sk-user-anthropic'],
+        'user_id' => $user->id,
     ]);
 
     $job = makeJob($this->agentRun, $project);
@@ -199,6 +208,57 @@ test('resolveApiKey matches key to resolved provider', function () {
     // Should use the openai key since provider is openai
     expect($config['api_key'])->toBe('sk-openai-project')
         ->and($config['provider'])->toBe('openai');
+});
+
+test('resolveAgentConfig resolves cheapest model strategy', function () {
+    $project = Project::factory()->create([
+        'agent_provider' => 'anthropic',
+        'agent_model' => 'cheapest',
+    ]);
+
+    $job = makeJob($this->agentRun, $project);
+    $config = invokeResolveAgentConfig($job);
+
+    expect($config['provider'])->toBe('anthropic')
+        ->and($config['model'])->toBe('claude-haiku-4-5-20251001');
+});
+
+test('resolveAgentConfig resolves smartest model strategy', function () {
+    $project = Project::factory()->create([
+        'agent_provider' => 'anthropic',
+        'agent_model' => 'smartest',
+    ]);
+
+    $job = makeJob($this->agentRun, $project);
+    $config = invokeResolveAgentConfig($job);
+
+    expect($config['provider'])->toBe('anthropic')
+        ->and($config['model'])->toBe('claude-opus-4-6');
+});
+
+test('resolveAgentConfig passes through explicit model unchanged', function () {
+    $project = Project::factory()->create([
+        'agent_provider' => 'anthropic',
+        'agent_model' => 'claude-sonnet-4-6',
+    ]);
+
+    $job = makeJob($this->agentRun, $project);
+    $config = invokeResolveAgentConfig($job);
+
+    expect($config['model'])->toBe('claude-sonnet-4-6');
+});
+
+test('resolveApiKey returns null when project has no user', function () {
+    $project = Project::factory()->create([
+        'agent_secrets' => null,
+        'agent_provider' => 'anthropic',
+        'user_id' => null,
+    ]);
+
+    $job = makeJob($this->agentRun, $project);
+    $config = invokeResolveAgentConfig($job);
+
+    expect($config['api_key'])->toBeNull();
 });
 
 // --- Helpers ---
