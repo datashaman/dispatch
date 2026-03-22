@@ -10,6 +10,7 @@ use App\Services\CostCalculator;
 use App\Services\ToolRegistry;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Laravel\Ai\Ai;
@@ -82,7 +83,26 @@ class LaravelAiExecutor implements Executor
                 provider: $provider,
                 model: $model,
             )->each(function (StreamEvent $event) use ($channel) {
-                $event->broadcastNow([$channel]);
+                try {
+                    if ($event instanceof ToolResult) {
+                        // Broadcast a lightweight version — full result can exceed Reverb limits
+                        Broadcast::on([$channel])
+                            ->as('tool_result')
+                            ->with([
+                                'type' => 'tool_result',
+                                'tool_name' => $event->toolResult->name ?? 'unknown',
+                                'successful' => $event->successful,
+                                'error' => $event->error,
+                            ])
+                            ->sendNow();
+                    } else {
+                        $event->broadcastNow([$channel]);
+                    }
+                } catch (Throwable $e) {
+                    Log::debug('Stream broadcast failed (non-fatal)', [
+                        'error' => $e->getMessage(),
+                    ]);
+                }
             });
 
             // At this point the stream has been fully consumed.
