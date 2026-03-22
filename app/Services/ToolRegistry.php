@@ -2,12 +2,16 @@
 
 namespace App\Services;
 
+use App\Ai\Contracts\ProjectAware;
 use App\Ai\Tools\BashTool;
 use App\Ai\Tools\EditTool;
 use App\Ai\Tools\GlobTool;
 use App\Ai\Tools\GrepTool;
 use App\Ai\Tools\ReadTool;
+use App\Ai\Tools\StitchEditTool;
+use App\Ai\Tools\StitchGenerateTool;
 use App\Ai\Tools\WriteTool;
+use App\Models\Project;
 use Laravel\Ai\Contracts\Tool;
 
 class ToolRegistry
@@ -24,6 +28,8 @@ class ToolRegistry
         'Bash' => BashTool::class,
         'Glob' => GlobTool::class,
         'Grep' => GrepTool::class,
+        'StitchGenerate' => StitchGenerateTool::class,
+        'StitchEdit' => StitchEditTool::class,
     ];
 
     /**
@@ -34,14 +40,20 @@ class ToolRegistry
      * @param  list<string>  $tools  Explicit list of tools to resolve (empty = all)
      * @return list<Tool>
      */
-    public function resolve(array $tools, string $workingDirectory): array
+    public function resolve(array $tools, string $workingDirectory, ?Project $project = null): array
     {
         $toolNames = ! empty($tools) ? $tools : array_keys(static::$tools);
 
         $resolved = [];
         foreach ($toolNames as $name) {
             if (isset(static::$tools[$name])) {
-                $resolved[] = new (static::$tools[$name])($workingDirectory);
+                $tool = new (static::$tools[$name])($workingDirectory);
+
+                if ($project && $tool instanceof ProjectAware) {
+                    $tool->setProject($project);
+                }
+
+                $resolved[] = $tool;
             }
         }
 

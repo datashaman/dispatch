@@ -280,6 +280,7 @@ class ProcessAgentRun implements ShouldQueue
             'isolation' => $agent?->isolation ?? false,
             'instructions_file' => $this->dispatchConfig->agentInstructionsFile,
             'project_path' => $this->project->path,
+            'project' => $this->project,
             'output_github_comment' => $output?->githubComment ?? false,
             'output_github_reaction' => $output?->githubReaction,
             'api_key' => $this->resolveApiKey($provider),

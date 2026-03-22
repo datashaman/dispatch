@@ -6,6 +6,7 @@ use App\Ai\Agents\DispatchAgent;
 use App\Contracts\Executor;
 use App\DataTransferObjects\ExecutionResult;
 use App\Models\AgentRun;
+use App\Models\Project;
 use App\Services\CostCalculator;
 use App\Services\ToolRegistry;
 use Illuminate\Broadcasting\PrivateChannel;
@@ -244,10 +245,12 @@ class LaravelAiExecutor implements Executor
     protected function resolveTools(array $agentConfig): array
     {
         $workingDirectory = $agentConfig['project_path'] ?? '';
+        $project = $agentConfig['project'] ?? null;
 
         return $this->toolRegistry->resolve(
             tools: $agentConfig['tools'] ?? [],
             workingDirectory: $workingDirectory,
+            project: $project instanceof Project ? $project : null,
         );
     }
 }
