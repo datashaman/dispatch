@@ -28,6 +28,10 @@
 
 ## Completed
 
+### P2: Stitch Integration — Thin Slice (Phase 2)
+**What:** Production-quality Stitch integration: StitchGenerateTool + StitchEditTool in ToolRegistry, BYOK support, StitchBridge service, lazy project creation, UI for key management.
+**Completed:** v1.1.0 (2026-03-22) — StitchBridge service, HasProjectContext trait, ProjectAware interface, migration, UI integration, 29 tests.
+
 ### P2: Event Sources Beyond GitHub
 **What:** Abstract the webhook endpoint to support GitLab, Bitbucket, Slack, Linear, Sentry, PagerDuty, and any webhook-sending service. Each source gets its own signature verification, payload normalization, and event type mapping.
 **Why:** Transforms Dispatch from "GitHub automation tool" to "universal event → AI agent router."
