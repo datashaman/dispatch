@@ -12,7 +12,6 @@ rules:
   -
     id: analyze
     event: issues.labeled
-    name: Analyze Issue
     prompt: |-
       You are triaging issue #{{ event.issue.number }} on the Dispatch project.
 
@@ -27,27 +26,25 @@ rules:
       4. A step-by-step implementation plan
 
       Write your analysis as a well-structured markdown document.
+    name: 'Analyze Issue'
     filters:
       -
-        id: label-dispatch
         field: event.label.name
         operator: equals
         value: dispatch
+    output:
+      github_comment: true
+      github_reaction: eyes
     agent:
+      model: smartest
       tools:
         - Read
         - Glob
         - Grep
         - Bash
-    output:
-      log: true
-      github_comment: true
-      github_reaction: eyes
   -
     id: implement
     event: issue_comment.created
-    name: Implement Plan
-    sort_order: 1
     prompt: |-
       You are implementing the approved plan for issue #{{ event.issue.number }}.
 
@@ -61,12 +58,15 @@ rules:
       Read the issue and prior comments for the analysis and plan.
       Implement the changes, commit them, and create a pull request.
       Use `gh` CLI for GitHub operations (creating PRs, posting comments).
+    name: 'Implement Plan'
     filters:
       -
-        id: dispatch-implement
         field: event.comment.body
         operator: contains
         value: '@dispatch implement'
+    output:
+      github_comment: true
+      github_reaction: rocket
     agent:
       tools:
         - Read
@@ -76,15 +76,9 @@ rules:
         - Glob
         - Grep
       isolation: true
-    output:
-      log: true
-      github_comment: true
-      github_reaction: rocket
   -
     id: interactive
     event: issue_comment.created
-    name: Interactive Q&A
-    sort_order: 2
     prompt: |-
       You are responding to a question or comment on issue #{{ event.issue.number }}.
 
@@ -97,30 +91,27 @@ rules:
 
       Respond helpfully. You can read the codebase to answer questions.
       Use `gh` CLI for any GitHub interactions.
+    name: 'Interactive Q&A'
     filters:
       -
-        id: mentions-dispatch
         field: event.comment.body
         operator: contains
         value: '@dispatch'
       -
-        id: not-implement
         field: event.comment.body
         operator: not_contains
         value: '@dispatch implement'
+    output:
+      github_comment: true
     agent:
       tools:
         - Read
         - Glob
         - Grep
         - Bash
-    output:
-      log: true
-      github_comment: true
   -
     id: review
     event: pull_request_review_comment.created
-    name: Code Review Responder
     prompt: |-
       You are responding to a PR review comment on the Dispatch project.
 
@@ -135,18 +126,17 @@ rules:
 
       Respond to the review feedback. You can read the codebase for context.
       Use `gh` CLI for any GitHub interactions.
+    name: 'Code Review Responder'
     filters:
       -
-        id: mentions-dispatch
         field: event.comment.body
         operator: contains
         value: '@dispatch'
+    output:
+      github_comment: true
     agent:
       tools:
         - Read
         - Glob
         - Grep
         - Bash
-    output:
-      log: true
-      github_comment: true
