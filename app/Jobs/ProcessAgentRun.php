@@ -294,6 +294,16 @@ class ProcessAgentRun implements ShouldQueue
     {
         $projectSecrets = $this->project->agent_secrets ?? [];
 
+        Log::info('resolveApiKey debug', [
+            'provider' => $provider,
+            'project_id' => $this->project->id,
+            'user_id' => $this->project->user_id,
+            'user_exists' => $this->project->user !== null,
+            'has_project_secrets' => ! empty($projectSecrets),
+            'project_secret_keys' => array_keys($projectSecrets),
+            'user_api_key_providers' => array_keys($this->project->user?->api_keys ?? []),
+        ]);
+
         // Project-level per-provider key
         if ($provider && ! empty($projectSecrets[$provider])) {
             return $projectSecrets[$provider];
