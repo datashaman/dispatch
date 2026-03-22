@@ -44,7 +44,7 @@ Dispatch is a self-hosted webhook server that receives GitHub webhook events and
 | `PromptRenderer` | Template rendering with dot notation for event variables |
 | `WorktreeManager` | Creates isolated git worktrees for agent execution |
 | `ToolRegistry` | Resolves available tools for agents |
-| `StitchBridge` | Wraps Node.js Stitch SDK bridge — generate, edit, create-project with BYOK key resolution |
+| `StitchBridge` | Wraps Node.js Stitch SDK bridge — generate, edit, list-projects, create-project with BYOK key resolution |
 
 ## Coding Standards
 
