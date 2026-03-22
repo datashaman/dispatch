@@ -63,6 +63,10 @@ Use `GitHubApiClient` for all GitHub API interactions (comments, reactions). It 
 
 Projects can define rules in a `dispatch.yml` file at the repo root. The config syncer imports/exports between this file and the database. See `dispatch.yml` in this repo for a working example with rules for issue triage, implementation, interactive Q&A, and code review response.
 
+## Stitch Integration (Spike)
+
+`tools/stitch/` contains a Node.js bridge for Google Stitch SDK — AI-powered UI generation. See `tools/stitch/README.md` for setup, usage, and the two-agent pipeline (designer → implementer). Triggered by the `stitch-design` label on issues. Requires `STITCH_API_KEY` env var.
+
 ## Design System
 Always read DESIGN.md before making any visual or UI decisions.
 All font choices, colors, spacing, and aesthetic direction are defined there.

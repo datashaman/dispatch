@@ -1,0 +1,13 @@
+{
+  "name": "stitch-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Node.js bridge for Google Stitch SDK — called by Dispatch agents via Bash tool",
+  "scripts": {
+    "test": "node --test stitch-bridge.test.js"
+  },
+  "dependencies": {
+    "@google/stitch-sdk": "^0.0.3"
+  }
+}
