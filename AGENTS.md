@@ -19,6 +19,10 @@ You are an AI agent working on the Dispatch project — a self-hosted webhook se
 - Config sync between `dispatch.yml` and database
 - GitHub App integration for automated repo management
 
+## Stitch Integration
+
+`tools/stitch/stitch-bridge.js` is a Node.js CLI bridge for Google Stitch SDK (AI-powered UI generation). It outputs JSON to stdout with `html`, `screenshot_url`, `screen_id`, and `project_id` fields. Requires `STITCH_API_KEY` env var. See `tools/stitch/README.md` for full usage.
+
 ## Coding Standards
 
 - Follow existing patterns in the codebase
