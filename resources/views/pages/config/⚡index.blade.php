@@ -328,8 +328,9 @@ new #[Title('Config Editor')] class extends Component {
 
         if ($prResult['ok']) {
             $prUrl = $prResult['data']['html_url'] ?? null;
+            $prNumber = $prResult['data']['number'] ?? '';
             $this->statusMessage = $prUrl
-                ? "Pull request created: {$prUrl}"
+                ? "Pull request <a href=\"{$prUrl}\" target=\"_blank\" class=\"underline\">#{$prNumber}</a> created."
                 : "Config committed to branch {$branchName}.";
         } else {
             $this->statusMessage = "Config committed to branch {$branchName} but PR creation failed: {$prResult['error']}";
@@ -754,7 +755,7 @@ new #[Title('Config Editor')] class extends Component {
     {{-- Status Messages --}}
     @if ($statusMessage)
         <flux:callout variant="success" class="mb-4">
-            {{ $statusMessage }}
+            {!! $statusMessage !!}
         </flux:callout>
     @endif
 
@@ -820,7 +821,7 @@ new #[Title('Config Editor')] class extends Component {
                                 size="sm"
                             >
                                 <flux:select.option value="">{{ $userProvider ? __('User default') . ' (' . ($this->providers[$userProvider]['label'] ?? $userProvider) . ')' : __('None') }}</flux:select.option>
-                                @foreach ($this->configuredProviders as $providerId => $provider)
+                                @foreach ($this->providers as $providerId => $provider)
                                     <flux:select.option value="{{ $providerId }}">{{ $provider['label'] }}</flux:select.option>
                                 @endforeach
                             </flux:select>
@@ -1025,7 +1026,7 @@ new #[Title('Config Editor')] class extends Component {
                                                             size="sm"
                                                         >
                                                             <flux:select.option value="">{{ __('Inherit from defaults') }}</flux:select.option>
-                                                            @foreach ($this->configuredProviders as $ruleProviderId => $ruleProvider)
+                                                            @foreach ($this->providers as $ruleProviderId => $ruleProvider)
                                                                 <flux:select.option value="{{ $ruleProviderId }}">{{ $ruleProvider['label'] }}</flux:select.option>
                                                             @endforeach
                                                         </flux:select>
