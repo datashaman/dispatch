@@ -24,6 +24,8 @@ new #[Title('Projects')] class extends Component {
     public ?string $editAgentModel = null;
     public ?string $editAgentInstructionsFile = null;
     public bool $editCacheConfig = false;
+    public array $providerKeys = [];
+    public array $storedProviderKeys = [];
     public ?int $confirmingDelete = null;
     public string $statusMessage = '';
     public string $errorMessage = '';
@@ -253,6 +255,15 @@ new #[Title('Projects')] class extends Component {
         $this->editAgentModel = $project->agent_model;
         $this->editAgentInstructionsFile = $project->agent_instructions_file;
         $this->editCacheConfig = (bool) $project->cache_config;
+
+        $secrets = $project->agent_secrets ?? [];
+        $this->storedProviderKeys = [];
+        $this->providerKeys = [];
+        foreach (array_keys(config('dispatch.providers', [])) as $providerId) {
+            $this->storedProviderKeys[$providerId] = ! empty($secrets[$providerId]);
+            $this->providerKeys[$providerId] = '';
+        }
+
         $this->showEditForm = true;
     }
 
@@ -285,6 +296,37 @@ new #[Title('Projects')] class extends Component {
 
         $this->reset('showEditForm', 'editingProjectId');
         $this->dispatch('project-updated');
+    }
+
+    public function saveProviderKey(string $provider): void
+    {
+        $key = $this->providerKeys[$provider] ?? '';
+
+        if (empty($key)) {
+            $this->errorMessage = 'API key cannot be empty.';
+            return;
+        }
+
+        $project = Project::findOrFail($this->editingProjectId);
+        $secrets = $project->agent_secrets ?? [];
+        $secrets[$provider] = $key;
+        $project->update(['agent_secrets' => $secrets]);
+
+        $this->storedProviderKeys[$provider] = true;
+        $this->providerKeys[$provider] = '';
+        $this->statusMessage = ($this->getProviders()[$provider]['label'] ?? $provider) . ' key saved.';
+    }
+
+    public function clearProviderKey(string $provider): void
+    {
+        $project = Project::findOrFail($this->editingProjectId);
+        $secrets = $project->agent_secrets ?? [];
+        unset($secrets[$provider]);
+        $project->update(['agent_secrets' => empty($secrets) ? null : $secrets]);
+
+        $this->storedProviderKeys[$provider] = false;
+        $this->providerKeys[$provider] = '';
+        $this->statusMessage = ($this->getProviders()[$provider]['label'] ?? $provider) . ' key cleared.';
     }
 
     public function removeProject(int $id): void
@@ -479,9 +521,18 @@ new #[Title('Projects')] class extends Component {
                 <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <flux:field>
                         <flux:label>{{ __('Provider') }}</flux:label>
+                        @php
+                            $userKeys = Auth::user()?->api_keys ?? [];
+                            $projectSecrets = Project::find($editingProjectId)?->agent_secrets ?? [];
+                            $availableProviders = array_filter(
+                                $this->getProviders(),
+                                fn ($p, $id) => ! empty($projectSecrets[$id]) || ! empty($userKeys[$id]),
+                                ARRAY_FILTER_USE_BOTH
+                            );
+                        @endphp
                         <flux:select wire:model.live="editAgentProvider">
                             <flux:select.option value="">{{ __('None') }}</flux:select.option>
-                            @foreach ($this->getProviders() as $key => $provider)
+                            @foreach ($availableProviders as $key => $provider)
                                 <flux:select.option value="{{ $key }}">{{ $provider['label'] }}</flux:select.option>
                             @endforeach
                         </flux:select>
@@ -501,6 +552,40 @@ new #[Title('Projects')] class extends Component {
                 <flux:field>
                     <flux:switch wire:model="editCacheConfig" label="{{ __('Cache Config') }}" description="{{ __('Cache parsed dispatch.yml for this project.') }}" />
                 </flux:field>
+
+                <flux:separator />
+
+                <flux:heading size="sm">{{ __('API Keys') }}</flux:heading>
+                <flux:text variant="subtle" class="text-xs">{{ __('Per-provider keys for this project. Encrypted at rest.') }}</flux:text>
+
+                <div class="space-y-3">
+                    @foreach ($this->getProviders() as $providerId => $provider)
+                        <div>
+                            <div class="text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">{{ $provider['label'] }}</div>
+                            @if ($storedProviderKeys[$providerId] ?? false)
+                                <div class="flex items-center gap-2">
+                                    <flux:badge color="green" size="sm">{{ __('Configured') }}</flux:badge>
+                                    <flux:button size="sm" variant="ghost" wire:click="clearProviderKey('{{ $providerId }}')" wire:confirm="Remove this API key?">
+                                        {{ __('Clear') }}
+                                    </flux:button>
+                                </div>
+                            @else
+                                <div class="flex items-center gap-2">
+                                    <flux:input
+                                        type="password"
+                                        wire:model="providerKeys.{{ $providerId }}"
+                                        placeholder="{{ __('Enter API key...') }}"
+                                        size="sm"
+                                        class="flex-1"
+                                    />
+                                    <flux:button size="sm" variant="primary" wire:click="saveProviderKey('{{ $providerId }}')">
+                                        {{ __('Save') }}
+                                    </flux:button>
+                                </div>
+                            @endif
+                        </div>
+                    @endforeach
+                </div>
             </div>
 
             <div class="mt-6 flex justify-end gap-2">

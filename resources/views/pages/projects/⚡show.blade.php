@@ -61,10 +61,13 @@ new #[Title('Project Detail')] class extends Component {
                     <flux:text variant="subtle" class="text-xs uppercase tracking-wider">{{ __('Instructions File') }}</flux:text>
                     <flux:heading size="sm" class="mt-1 font-mono text-sm">{{ $project->agent_instructions_file ?? '—' }}</flux:heading>
                 </div>
-                <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 p-4">
-                    <flux:text variant="subtle" class="text-xs uppercase tracking-wider">{{ __('API Key') }}</flux:text>
-                    <flux:heading size="sm" class="mt-1">{{ !empty($project->agent_secrets['api_key']) ? __('Configured') : __('Not set') }}</flux:heading>
-                </div>
+                @php $secrets = $project->agent_secrets ?? []; @endphp
+                @foreach (config('dispatch.providers', []) as $providerId => $provider)
+                    <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 p-4">
+                        <flux:text variant="subtle" class="text-xs uppercase tracking-wider">{{ $provider['label'] }} {{ __('Key') }}</flux:text>
+                        <flux:heading size="sm" class="mt-1">{{ !empty($secrets[$providerId]) ? __('Configured') : __('Not set') }}</flux:heading>
+                    </div>
+                @endforeach
                 <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 p-4">
                     <flux:text variant="subtle" class="text-xs uppercase tracking-wider">{{ __('Cache Config') }}</flux:text>
                     <flux:heading size="sm" class="mt-1">{{ $project->cache_config ? __('Enabled') : __('Disabled') }}</flux:heading>
