@@ -3,6 +3,7 @@
 use App\Enums\FilterOperator;
 use App\Models\Project;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Process;
 use App\Services\ConfigWriter;
 use App\Services\DefaultRulesService;
 use App\Services\GitHubApiClient;
@@ -124,7 +125,14 @@ new #[Title('Config Editor')] class extends Component {
     public function loadConfig(): void
     {
         $project = $this->project;
-        $filePath = rtrim($project->path, '/').'/dispatch.yml';
+        $projectPath = rtrim($project->path, '/');
+
+        // Pull latest from remote if this is a git repo
+        if (is_dir("{$projectPath}/.git")) {
+            Process::path($projectPath)->run('git pull --ff-only 2>&1');
+        }
+
+        $filePath = $projectPath.'/dispatch.yml';
 
         if (! file_exists($filePath)) {
             $this->configData = [];
