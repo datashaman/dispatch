@@ -328,8 +328,9 @@ new #[Title('Config Editor')] class extends Component {
 
         if ($prResult['ok']) {
             $prUrl = $prResult['data']['html_url'] ?? null;
+            $prNumber = $prResult['data']['number'] ?? '';
             $this->statusMessage = $prUrl
-                ? "Pull request created: {$prUrl}"
+                ? "Pull request <a href=\"{$prUrl}\" target=\"_blank\" class=\"underline\">#{$prNumber}</a> created."
                 : "Config committed to branch {$branchName}.";
         } else {
             $this->statusMessage = "Config committed to branch {$branchName} but PR creation failed: {$prResult['error']}";
@@ -754,7 +755,7 @@ new #[Title('Config Editor')] class extends Component {
     {{-- Status Messages --}}
     @if ($statusMessage)
         <flux:callout variant="success" class="mb-4">
-            {{ $statusMessage }}
+            {!! $statusMessage !!}
         </flux:callout>
     @endif
 
