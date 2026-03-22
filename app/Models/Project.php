@@ -26,6 +26,7 @@ class Project extends Model
         'enabled',
         'monthly_budget',
         'github_installation_id',
+        'user_id',
     ];
 
     protected function casts(): array
@@ -36,6 +37,14 @@ class Project extends Model
             'enabled' => 'boolean',
             'monthly_budget' => 'decimal:2',
         ];
+    }
+
+    /**
+     * @return BelongsTo<User, $this>
+     */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
     }
 
     /**

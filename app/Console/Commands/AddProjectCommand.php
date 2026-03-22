@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Project;
+use App\Models\User;
 use App\Services\DefaultRulesService;
 use Illuminate\Console\Command;
 
@@ -32,6 +33,7 @@ class AddProjectCommand extends Command
         $project = Project::create([
             'repo' => $repo,
             'path' => $path,
+            'user_id' => User::first()?->id,
         ]);
 
         $created = app(DefaultRulesService::class)->seed($project);

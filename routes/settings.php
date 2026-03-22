@@ -25,4 +25,5 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::livewire('settings/github', 'pages::settings.github')->name('github.settings');
     Route::livewire('settings/github/{installation}/repos', 'pages::settings.github-repos')->name('github.repos');
+    Route::livewire('settings/api-keys', 'pages::settings.api-keys')->name('api-keys.edit');
 });

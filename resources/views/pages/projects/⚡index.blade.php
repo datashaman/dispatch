@@ -5,6 +5,7 @@ use App\Models\Project;
 use App\Services\ConfigSyncer;
 use App\Services\DefaultRulesService;
 use App\Services\GitHubAppService;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
@@ -217,6 +218,7 @@ new #[Title('Projects')] class extends Component {
                 'repo' => $fullName,
                 'path' => $repoPath,
                 'github_installation_id' => $installationDbId,
+                'user_id' => Auth::id(),
             ]);
 
             app(DefaultRulesService::class)->seed($project);

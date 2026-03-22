@@ -17,6 +17,7 @@ use App\Services\WorktreeManager;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
+use Laravel\Ai\Ai;
 
 class ProcessAgentRun implements ShouldQueue
 {
@@ -238,6 +239,7 @@ class ProcessAgentRun implements ShouldQueue
 
     /**
      * Resolve agent config by merging rule-level config with dispatch-level defaults.
+     * Resolution chain: rule → project/dispatch → user defaults → system config.
      *
      * @return array<string, mixed>
      */
@@ -245,11 +247,32 @@ class ProcessAgentRun implements ShouldQueue
     {
         $agent = $this->ruleConfig->agent;
         $output = $this->ruleConfig->output;
-        $provider = $agent?->provider ?? $this->dispatchConfig->agentProvider;
+        $userDefaults = $this->resolveUserDefaults();
+
+        // Provider: rule → project → user → null
+        $provider = $agent?->provider
+            ?? $this->dispatchConfig->agentProvider
+            ?? $userDefaults['provider']
+            ?? null;
+
+        // Model: rule → project → user → null
+        $model = $agent?->model
+            ?? $this->dispatchConfig->agentModel
+            ?? $userDefaults['model']
+            ?? null;
+
+        // Resolve model strategy keywords to actual model names
+        if ($provider && in_array($model, ['cheapest', 'smartest'], true)) {
+            $sdkProvider = Ai::textProvider($provider);
+            $model = match ($model) {
+                'cheapest' => $sdkProvider->cheapestTextModel(),
+                'smartest' => $sdkProvider->smartestTextModel(),
+            };
+        }
 
         return [
             'provider' => $provider,
-            'model' => $agent?->model ?? $this->dispatchConfig->agentModel,
+            'model' => $model,
             'max_tokens' => $agent?->maxTokens,
             'max_steps' => $agent?->maxSteps,
             'tools' => $agent?->tools ?? [],
@@ -259,18 +282,53 @@ class ProcessAgentRun implements ShouldQueue
             'project_path' => $this->project->path,
             'output_github_comment' => $output?->githubComment ?? false,
             'output_github_reaction' => $output?->githubReaction,
-            'api_key' => $this->resolveApiKey(),
+            'api_key' => $this->resolveApiKey($provider),
         ];
     }
 
     /**
-     * Resolve the API key from the project's encrypted secrets.
+     * Resolve the API key for the given provider.
+     * Chain: project-level (per-provider) → project-level (legacy api_key) → user-level → null.
      */
-    protected function resolveApiKey(): ?string
+    protected function resolveApiKey(?string $provider): ?string
     {
-        $secrets = $this->project->agent_secrets ?? [];
+        $projectSecrets = $this->project->agent_secrets ?? [];
 
-        return $secrets['api_key'] ?? null;
+        // Project-level per-provider key
+        if ($provider && ! empty($projectSecrets[$provider])) {
+            return $projectSecrets[$provider];
+        }
+
+        // Legacy project-level single api_key
+        if (! empty($projectSecrets['api_key'])) {
+            return $projectSecrets['api_key'];
+        }
+
+        // User-level per-provider key
+        if ($provider) {
+            $userKeys = $this->project->user?->api_keys ?? [];
+
+            if (! empty($userKeys[$provider])) {
+                return $userKeys[$provider];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Resolve user-level default provider and model.
+     *
+     * @return array{provider: ?string, model: ?string}
+     */
+    protected function resolveUserDefaults(): array
+    {
+        $user = $this->project->user;
+
+        return [
+            'provider' => $user?->default_provider,
+            'model' => $user?->default_model,
+        ];
     }
 
     /**
