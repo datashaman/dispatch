@@ -127,9 +127,17 @@ new #[Title('Config Editor')] class extends Component {
         $project = $this->project;
         $projectPath = rtrim($project->path, '/');
 
-        // Pull latest from remote if this is a git repo
-        if (is_dir("{$projectPath}/.git")) {
-            Process::path($projectPath)->run('git pull --ff-only 2>&1');
+        // Pull latest from remote using a fresh installation token
+        if (is_dir("{$projectPath}/.git") && $project->githubInstallation) {
+            try {
+                $token = app(\App\Services\GitHubAppService::class)
+                    ->getInstallationToken($project->githubInstallation->installation_id);
+                $authedUrl = "https://x-access-token:{$token}@github.com/{$project->repo}.git";
+                Process::path($projectPath)->run("git remote set-url origin {$authedUrl}");
+                Process::path($projectPath)->run('git pull --ff-only 2>&1');
+            } catch (\Throwable) {
+                // Non-fatal — proceed with whatever's on disk
+            }
         }
 
         $filePath = $projectPath.'/dispatch.yml';

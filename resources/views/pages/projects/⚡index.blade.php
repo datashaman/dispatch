@@ -343,11 +343,32 @@ new #[Title('Projects')] class extends Component {
         $this->statusMessage = '';
         $this->errorMessage = '';
 
+        $this->pullRepo($project);
+
         try {
             app(ConfigSyncer::class)->import($project);
             $this->statusMessage = "Config imported for {$project->repo}.";
         } catch (\Throwable $e) {
             $this->errorMessage = "Import failed: {$e->getMessage()}";
+        }
+    }
+
+    protected function pullRepo(Project $project): void
+    {
+        $projectPath = rtrim($project->path, '/');
+
+        if (! is_dir("{$projectPath}/.git") || ! $project->githubInstallation) {
+            return;
+        }
+
+        try {
+            $token = app(GitHubAppService::class)
+                ->getInstallationToken($project->githubInstallation->installation_id);
+            $authedUrl = "https://x-access-token:{$token}@github.com/{$project->repo}.git";
+            Process::path($projectPath)->run("git remote set-url origin {$authedUrl}");
+            Process::path($projectPath)->run('git pull --ff-only 2>&1');
+        } catch (\Throwable) {
+            // Non-fatal — proceed with whatever's on disk
         }
     }
 
