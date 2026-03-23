@@ -45,10 +45,6 @@ new #[Title('Project Detail')] class extends Component {
             <flux:heading size="lg" class="mb-3">{{ __('Agent Configuration') }}</flux:heading>
             <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
                 <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 p-4">
-                    <flux:text variant="subtle" class="text-xs uppercase tracking-wider">{{ __('Agent Name') }}</flux:text>
-                    <flux:heading size="sm" class="mt-1">{{ $project->agent_name ?? '—' }}</flux:heading>
-                </div>
-                <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 p-4">
                     <flux:text variant="subtle" class="text-xs uppercase tracking-wider">{{ __('Provider') }}</flux:text>
                     <flux:heading size="sm" class="mt-1">{{ $project->agent_provider ?? '—' }}</flux:heading>
                 </div>

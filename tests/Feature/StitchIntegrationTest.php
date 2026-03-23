@@ -531,8 +531,6 @@ test('resolveAgentConfig includes project in config array', function () {
 
     $dispatchConfig = new DispatchConfig(
         version: 1,
-        agentName: 'test-agent',
-        agentExecutor: 'laravel-ai',
         agentProvider: 'anthropic',
     );
 

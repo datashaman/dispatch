@@ -32,8 +32,6 @@ function writeDispatchConfig(string $path, array $rules = []): DispatchConfig
 {
     $config = new DispatchConfig(
         version: 1,
-        agentName: 'test',
-        agentExecutor: 'laravel-ai',
         agentProvider: 'anthropic',
         agentModel: 'claude-sonnet-4-6',
         rules: $rules,
@@ -396,8 +394,6 @@ test('ProcessAgentRun job updates status to running then success', function () {
 
     $dispatchConfig = new DispatchConfig(
         version: 1,
-        agentName: 'test',
-        agentExecutor: 'laravel-ai',
         agentProvider: 'anthropic',
         agentModel: 'claude-sonnet-4-6',
     );
@@ -439,8 +435,6 @@ test('ProcessAgentRun job marks as failed on exception', function () {
 
     $dispatchConfig = new DispatchConfig(
         version: 1,
-        agentName: 'test',
-        agentExecutor: 'laravel-ai',
         agentProvider: 'anthropic',
         agentModel: 'claude-sonnet-4-6',
     );

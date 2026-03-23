@@ -277,8 +277,6 @@ function makeJob(
 
     $dispatchConfig ??= new DispatchConfig(
         version: 1,
-        agentName: 'test-agent',
-        agentExecutor: 'laravel-ai',
         agentProvider: $project->agent_provider,
         agentModel: $project->agent_model,
     );

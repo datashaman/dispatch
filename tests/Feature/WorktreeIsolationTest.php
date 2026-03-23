@@ -22,7 +22,6 @@ beforeEach(function () {
     $this->project = Project::factory()->create([
         'repo' => 'test-owner/test-repo',
         'path' => $this->projectPath,
-        'agent_executor' => 'laravel-ai',
     ]);
 });
 
@@ -107,8 +106,6 @@ test('ProcessAgentRun creates worktree when isolation is true', function () {
 
     $dispatchConfig = new DispatchConfig(
         version: 1,
-        agentName: 'test',
-        agentExecutor: 'laravel-ai',
     );
 
     $ruleConfig = new RuleConfig(
@@ -150,8 +147,6 @@ test('ProcessAgentRun does not create worktree when isolation is false', functio
 
     $dispatchConfig = new DispatchConfig(
         version: 1,
-        agentName: 'test',
-        agentExecutor: 'laravel-ai',
     );
 
     $ruleConfig = new RuleConfig(

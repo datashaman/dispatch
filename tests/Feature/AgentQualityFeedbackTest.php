@@ -87,7 +87,7 @@ test('feedback is deleted when agent run is deleted', function () {
 
 // --- UI tests ---
 
-test('webhook show page displays feedback buttons for completed run', function () {
+test('agent run detail page displays feedback buttons for completed run', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
 
@@ -97,14 +97,13 @@ test('webhook show page displays feedback buttons for completed run', function (
         'status' => 'success',
     ]);
 
-    Volt::test('pages::webhooks.show', ['webhookLog' => $webhookLog->id])
-        ->call('viewAgentRun', $run->id)
+    Volt::test('pages::agent-runs.show', ['agentRun' => $run->id])
         ->assertSee('Was this helpful?')
         ->assertSee('Helpful')
         ->assertSee('Not helpful');
 });
 
-test('webhook show page hides feedback for queued run', function () {
+test('agent run detail page hides feedback for queued run', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
 
@@ -114,12 +113,11 @@ test('webhook show page hides feedback for queued run', function () {
         'status' => 'queued',
     ]);
 
-    Volt::test('pages::webhooks.show', ['webhookLog' => $webhookLog->id])
-        ->call('viewAgentRun', $run->id)
+    Volt::test('pages::agent-runs.show', ['agentRun' => $run->id])
         ->assertDontSee('Was this helpful?');
 });
 
-test('webhook show page submits helpful feedback', function () {
+test('agent run detail page submits helpful feedback', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
 
@@ -129,8 +127,7 @@ test('webhook show page submits helpful feedback', function () {
         'status' => 'success',
     ]);
 
-    Volt::test('pages::webhooks.show', ['webhookLog' => $webhookLog->id])
-        ->call('viewAgentRun', $run->id)
+    Volt::test('pages::agent-runs.show', ['agentRun' => $run->id])
         ->call('submitFeedback', 'helpful')
         ->assertSee('Feedback saved.');
 
@@ -140,7 +137,7 @@ test('webhook show page submits helpful feedback', function () {
     expect($feedback->user_id)->toBe($user->id);
 });
 
-test('webhook show page submits feedback with comment', function () {
+test('agent run detail page submits feedback with comment', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
 
@@ -150,8 +147,7 @@ test('webhook show page submits feedback with comment', function () {
         'status' => 'failed',
     ]);
 
-    Volt::test('pages::webhooks.show', ['webhookLog' => $webhookLog->id])
-        ->call('viewAgentRun', $run->id)
+    Volt::test('pages::agent-runs.show', ['agentRun' => $run->id])
         ->set('feedbackComment', 'Missed the main issue')
         ->call('submitFeedback', 'not_helpful')
         ->assertSee('Feedback saved.');
@@ -161,7 +157,7 @@ test('webhook show page submits feedback with comment', function () {
     expect($feedback->comment)->toBe('Missed the main issue');
 });
 
-test('webhook show page updates existing feedback', function () {
+test('agent run detail page updates existing feedback', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
 
@@ -179,8 +175,7 @@ test('webhook show page updates existing feedback', function () {
     ]);
 
     // Change to not helpful
-    Volt::test('pages::webhooks.show', ['webhookLog' => $webhookLog->id])
-        ->call('viewAgentRun', $run->id)
+    Volt::test('pages::agent-runs.show', ['agentRun' => $run->id])
         ->call('submitFeedback', 'not_helpful')
         ->assertSee('Feedback saved.');
 

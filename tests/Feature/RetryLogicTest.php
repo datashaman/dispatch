@@ -20,8 +20,6 @@ beforeEach(function () {
 
     $this->dispatchConfig = new DispatchConfig(
         version: 1,
-        agentName: 'test',
-        agentExecutor: 'laravel-ai',
         agentProvider: 'anthropic',
         agentModel: 'claude-sonnet-4-6',
     );

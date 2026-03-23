@@ -33,8 +33,7 @@ class ConfigSyncer
     private function syncProjectAgentConfig(Project $project, DispatchConfig $config): void
     {
         $project->update([
-            'agent_name' => $config->agentName ?: null,
-            'agent_executor' => $config->agentExecutor ?: null,
+            'agent_executor' => 'laravel-ai',
             'agent_provider' => $config->agentProvider,
             'agent_model' => $config->agentModel,
             'agent_instructions_file' => $config->agentInstructionsFile,

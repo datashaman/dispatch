@@ -580,12 +580,8 @@ new #[Title('Config Editor')] class extends Component {
     {
         $errors = [];
 
-        if (empty($this->configData['agent']['name'] ?? '')) {
-            $errors[] = 'Agent name is required.';
-        }
-        if (empty($this->configData['agent']['executor'] ?? '')) {
-            $errors[] = 'Agent executor is required.';
-        }
+        // Ensure executor is always set
+        $this->configData['agent']['executor'] = 'laravel-ai';
 
         foreach ($this->configData['rules'] ?? [] as $i => $rule) {
             $num = $i + 1;
@@ -790,73 +786,29 @@ new #[Title('Config Editor')] class extends Component {
             {{-- LEFT: Form Panel --}}
             <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden">
                 <div class="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700 flex items-center justify-between">
-                    <flux:text class="font-medium text-sm">{{ __('Rules & Agent Config') }}</flux:text>
-                </div>
-                <div class="p-4 space-y-6 max-h-[70vh] overflow-y-auto">
-                    {{-- Agent Defaults --}}
-                    <div>
-                        <div class="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400 font-medium mb-3">
-                            {{ __('Agent Defaults') }}
-                        </div>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <flux:input
-                                label="{{ __('Name') }}"
-                                wire:model.live.debounce.300ms="configData.agent.name"
-                                placeholder="dispatch-agent"
-                                size="sm"
-                            />
-                            <flux:input
-                                label="{{ __('Executor') }}"
-                                value="laravel-ai"
-                                size="sm"
-                                readonly
-                            />
-                            @php
-                                $userProvider = Auth::user()?->default_provider;
-                                $userModel = Auth::user()?->default_model;
-                            @endphp
-                            <flux:select
-                                label="{{ __('Provider') }}"
-                                wire:model.live="configData.agent.provider"
-                                size="sm"
-                            >
-                                <flux:select.option value="">{{ $userProvider ? __('User default') . ' (' . ($this->providers[$userProvider]['label'] ?? $userProvider) . ')' : __('None') }}</flux:select.option>
-                                @foreach ($this->providers as $providerId => $provider)
-                                    <flux:select.option value="{{ $providerId }}">{{ $provider['label'] }}</flux:select.option>
-                                @endforeach
-                            </flux:select>
-                            @php
-                                $selectedProvider = $configData['agent']['provider'] ?? '';
-                                $availableModels = $selectedProvider ? ($this->providers[$selectedProvider]['models'] ?? []) : [];
-                            @endphp
-                            <flux:select
-                                label="{{ __('Model') }}"
-                                wire:model.live="configData.agent.model"
-                                size="sm"
-                            >
-                                <flux:select.option value="">{{ $userModel ? __('User default') . ' (' . $userModel . ')' : __('None') }}</flux:select.option>
-                                <flux:select.option value="cheapest">{{ __('Cheapest (auto)') }}</flux:select.option>
-                                <flux:select.option value="smartest">{{ __('Smartest (auto)') }}</flux:select.option>
-                                @foreach ($availableModels as $modelId => $modelName)
-                                    <flux:select.option value="{{ $modelId }}">{{ $modelName }}</flux:select.option>
-                                @endforeach
-                            </flux:select>
-                        </div>
-
+                    <flux:text class="font-medium text-sm">{{ __('Rules') }} ({{ count($configData['rules'] ?? []) }})</flux:text>
+                    <div class="flex items-center gap-2">
+                        @php
+                            $defaultProvider = $configData['agent']['provider'] ?? null;
+                            $defaultModel = $configData['agent']['model'] ?? null;
+                            $defaultsLabel = $defaultProvider
+                                ? ($this->providers[$defaultProvider]['label'] ?? $defaultProvider) . ($defaultModel ? ' / ' . ($this->providers[$defaultProvider]['models'][$defaultModel] ?? $defaultModel) : '')
+                                : __('User defaults');
+                        @endphp
+                        <flux:modal.trigger name="agent-defaults-modal">
+                            <flux:button size="sm" variant="ghost" icon="cog-6-tooth">
+                                {{ $defaultsLabel }}
+                            </flux:button>
+                        </flux:modal.trigger>
+                        @if (count($configData['rules'] ?? []) > 1)
+                            <flux:button size="sm" variant="ghost" wire:click="toggleExpandAll">
+                                {{ $allExpanded ? __('Collapse All') : __('Expand All') }}
+                            </flux:button>
+                        @endif
                     </div>
-
-                    {{-- Rules --}}
+                </div>
+                <div class="p-4 max-h-[70vh] overflow-y-auto">
                     <div>
-                        <div class="flex items-center justify-between mb-3">
-                            <div class="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400 font-medium">
-                                {{ __('Rules') }} ({{ count($configData['rules'] ?? []) }})
-                            </div>
-                            @if (count($configData['rules'] ?? []) > 1)
-                                <flux:button size="sm" variant="ghost" wire:click="toggleExpandAll">
-                                    {{ $allExpanded ? __('Collapse All') : __('Expand All') }}
-                                </flux:button>
-                            @endif
-                        </div>
 
                         <div class="space-y-2">
                             @foreach ($configData['rules'] ?? [] as $ruleIndex => $rule)
@@ -1161,4 +1113,46 @@ new #[Title('Config Editor')] class extends Component {
             <span class="text-zinc-500">{{ __('Cmd+S to save') }}</span>
         </div>
     @endif
+
+    {{-- Agent Defaults Modal --}}
+    <flux:modal name="agent-defaults-modal" class="md:w-lg">
+        <flux:heading size="lg">{{ __('Agent Defaults') }}</flux:heading>
+        <flux:text class="mt-1">{{ __('Default provider and model for all rules. Rules can override these individually.') }}</flux:text>
+
+        <div class="mt-4 space-y-4">
+            @php
+                $userProvider = Auth::user()?->default_provider;
+                $userModel = Auth::user()?->default_model;
+            @endphp
+            <flux:select
+                label="{{ __('Provider') }}"
+                wire:model.live="configData.agent.provider"
+            >
+                <flux:select.option value="">{{ $userProvider ? __('User default') . ' (' . ($this->providers[$userProvider]['label'] ?? $userProvider) . ')' : __('None') }}</flux:select.option>
+                @foreach ($this->providers as $providerId => $provider)
+                    <flux:select.option value="{{ $providerId }}">{{ $provider['label'] }}</flux:select.option>
+                @endforeach
+            </flux:select>
+
+            @php
+                $selectedProvider = $configData['agent']['provider'] ?? '';
+                $availableModels = $selectedProvider ? ($this->providers[$selectedProvider]['models'] ?? []) : [];
+            @endphp
+            <flux:select
+                label="{{ __('Model') }}"
+                wire:model.live="configData.agent.model"
+            >
+                <flux:select.option value="">{{ $userModel ? __('User default') . ' (' . $userModel . ')' : __('None') }}</flux:select.option>
+                <flux:select.option value="cheapest">{{ __('Cheapest (auto)') }}</flux:select.option>
+                <flux:select.option value="smartest">{{ __('Smartest (auto)') }}</flux:select.option>
+                @foreach ($availableModels as $modelId => $modelName)
+                    <flux:select.option value="{{ $modelId }}">{{ $modelName }}</flux:select.option>
+                @endforeach
+            </flux:select>
+        </div>
+
+        <div class="mt-6 flex justify-end">
+            <flux:button variant="ghost" x-on:click="$flux.modal('agent-defaults-modal').close()">{{ __('Done') }}</flux:button>
+        </div>
+    </flux:modal>
 </section>

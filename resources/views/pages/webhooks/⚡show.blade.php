@@ -1,22 +1,14 @@
 <?php
 
-use App\Enums\FeedbackRating;
-use App\Models\AgentRun;
-use App\Models\AgentRunFeedback;
 use App\Models\WebhookLog;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
 new #[Title('Webhook Log Detail')] class extends Component {
     public ?int $webhookLogId = null;
-    public ?int $viewingAgentRunId = null;
-    public bool $showAgentRunDetail = false;
     public bool $replaying = false;
     public string $replayMessage = '';
-    public string $feedbackComment = '';
-    public string $feedbackMessage = '';
 
     public function mount(int $webhookLog): void
     {
@@ -31,58 +23,6 @@ new #[Title('Webhook Log Detail')] class extends Component {
     public function refreshAgentRuns(): void
     {
         // Called from Echo listener — forces re-render with fresh data
-    }
-
-    public function viewAgentRun(int $id): void
-    {
-        $this->viewingAgentRunId = $id;
-        $this->feedbackComment = '';
-        $this->feedbackMessage = '';
-        $this->showAgentRunDetail = true;
-    }
-
-    public function submitFeedback(string $rating): void
-    {
-        $user = Auth::user();
-        if (! $user || ! $this->viewingAgentRunId) {
-            return;
-        }
-
-        $feedbackRating = FeedbackRating::from($rating);
-
-        AgentRunFeedback::updateOrCreate(
-            [
-                'agent_run_id' => $this->viewingAgentRunId,
-                'user_id' => $user->id,
-            ],
-            [
-                'rating' => $feedbackRating,
-                'comment' => $this->feedbackComment ?: null,
-            ],
-        );
-
-        $this->feedbackMessage = 'Feedback saved.';
-    }
-
-    public function getExistingFeedback(): ?AgentRunFeedback
-    {
-        $user = Auth::user();
-        if (! $user || ! $this->viewingAgentRunId) {
-            return null;
-        }
-
-        return AgentRunFeedback::where('agent_run_id', $this->viewingAgentRunId)
-            ->where('user_id', $user->id)
-            ->first();
-    }
-
-    public function getViewingAgentRun(): ?AgentRun
-    {
-        if (! $this->viewingAgentRunId) {
-            return null;
-        }
-
-        return AgentRun::find($this->viewingAgentRunId);
     }
 
     public function getAgentRunIds(): array
@@ -293,7 +233,7 @@ new #[Title('Webhook Log Detail')] class extends Component {
                                     <td class="px-4 py-3 text-sm">{{ $run->tokens_used ? number_format($run->tokens_used) : '—' }}</td>
                                     <td class="px-4 py-3 text-sm">{{ $run->cost ? '$' . number_format((float) $run->cost, 4) : '—' }}</td>
                                     <td class="px-4 py-3 text-right">
-                                        <flux:button variant="ghost" size="sm" icon="eye" wire:click="viewAgentRun({{ $run->id }})">
+                                        <flux:button variant="ghost" size="sm" icon="eye" :href="route('agent-runs.show', $run->id)" wire:navigate>
                                             {{ __('Detail') }}
                                         </flux:button>
                                     </td>
@@ -326,7 +266,7 @@ new #[Title('Webhook Log Detail')] class extends Component {
                                     <template x-if="event.type === 'tool'">
                                         <div class="rounded px-3 py-1.5" :class="event.status === 'error' ? 'bg-red-50 dark:bg-red-900/20' : event.status === 'done' ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'bg-blue-50 dark:bg-blue-900/20'">
                                             <div class="flex items-center gap-2">
-                                                <span class="text-xs font-medium" :class="event.status === 'error' ? 'text-red-700 dark:text-red-300' : event.status === 'done' ? 'text-emerald-700 dark:text-emerald-300' : 'text-blue-700 dark:text-blue-300'" x-text="(event.status === 'error' ? '✗ ' : event.status === 'done' ? '✓ ' : '→ ') + event.tool_name"></span>
+                                                <span class="text-xs font-medium" :class="event.status === 'error' ? 'text-red-700 dark:text-red-300' : event.status === 'done' ? 'text-emerald-700 dark:text-emerald-300' : 'text-blue-700 dark:text-blue-300'" x-text="(event.status === 'error' ? '✗ ' : event.status === 'done' ? '✓ ' : '→ ') + event.tool_name.replace(/Tool$/, '')"></span>
                                                 <template x-if="event.summary">
                                                     <span class="text-xs font-mono opacity-70" x-text="event.summary"></span>
                                                 </template>
@@ -347,176 +287,95 @@ new #[Title('Webhook Log Detail')] class extends Component {
             </div>
         </template>
 
-        {{-- Payload --}}
-        <div class="mb-6">
-            <flux:heading size="lg" class="mb-3">{{ __('Payload') }}</flux:heading>
-            <pre class="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 p-4 text-sm font-mono overflow-x-auto max-h-96 overflow-y-auto">{{ json_encode($log->payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) }}</pre>
-        </div>
+        {{-- Payload Summary --}}
+        <div class="mb-6" x-data="{ showPayload: false }">
+            <div class="flex items-center justify-between mb-3">
+                <flux:heading size="lg">{{ __('Payload') }}</flux:heading>
+                <flux:button variant="ghost" size="sm" icon="code-bracket" x-on:click="showPayload = !showPayload">
+                    <span x-text="showPayload ? '{{ __('Hide JSON') }}' : '{{ __('Show JSON') }}'"></span>
+                </flux:button>
+            </div>
 
-        {{-- Agent Run Detail Modal --}}
-        <flux:modal wire:model="showAgentRunDetail" class="md:w-4xl">
-            @php $agentRun = $this->getViewingAgentRun(); @endphp
-            @if ($agentRun)
-                <flux:heading size="lg">{{ __('Agent Run Detail') }}</flux:heading>
-                <flux:text class="mt-1">{{ __('Rule:') }} {{ $agentRun->rule_id }}</flux:text>
+            @php
+                $payload = $log->payload ?? [];
+                $eventBase = str_contains($log->event_type, '.') ? substr($log->event_type, 0, strpos($log->event_type, '.')) : $log->event_type;
+                $action = $payload['action'] ?? null;
 
-                <div class="mt-4 grid grid-cols-2 gap-4">
-                    <div>
-                        <flux:text variant="subtle" class="text-xs uppercase">{{ __('Status') }}</flux:text>
-                        <flux:text class="mt-1 font-medium">{{ $agentRun->status }}</flux:text>
-                    </div>
-                    <div>
-                        <flux:text variant="subtle" class="text-xs uppercase">{{ __('Attempt') }}</flux:text>
-                        <flux:text class="mt-1">{{ $agentRun->attempt ?? 1 }}</flux:text>
-                    </div>
-                    <div>
-                        <flux:text variant="subtle" class="text-xs uppercase">{{ __('Duration') }}</flux:text>
-                        <flux:text class="mt-1">{{ $agentRun->duration_ms ? number_format($agentRun->duration_ms / 1000, 1) . 's' : '—' }}</flux:text>
-                    </div>
-                    <div>
-                        <flux:text variant="subtle" class="text-xs uppercase">{{ __('Tokens') }}</flux:text>
-                        <flux:text class="mt-1">{{ $agentRun->tokens_used ? number_format($agentRun->tokens_used) : '—' }}</flux:text>
-                    </div>
-                    <div>
-                        <flux:text variant="subtle" class="text-xs uppercase">{{ __('Cost') }}</flux:text>
-                        <flux:text class="mt-1">{{ $agentRun->cost ? '$' . number_format((float) $agentRun->cost, 4) : '—' }}</flux:text>
-                    </div>
-                    <div>
-                        <flux:text variant="subtle" class="text-xs uppercase">{{ __('Time') }}</flux:text>
-                        <flux:text class="mt-1">{{ $agentRun->created_at?->format('Y-m-d H:i:s') }}</flux:text>
-                    </div>
+                $summaryFields = [];
+
+                // Common: repo
+                if ($repo = data_get($payload, 'repository.full_name')) {
+                    $summaryFields['Repo'] = $repo;
+                }
+
+                // Common: sender
+                if ($sender = data_get($payload, 'sender.login')) {
+                    $summaryFields['Sender'] = $sender;
+                }
+
+                // Event-specific fields
+                match ($eventBase) {
+                    'issues' => (function () use ($payload, &$summaryFields) {
+                        $summaryFields['Issue'] = '#' . data_get($payload, 'issue.number', '?') . ' — ' . data_get($payload, 'issue.title', '');
+                        if ($labels = data_get($payload, 'issue.labels')) {
+                            $summaryFields['Labels'] = collect($labels)->pluck('name')->join(', ');
+                        }
+                        if ($assignee = data_get($payload, 'issue.assignee.login')) {
+                            $summaryFields['Assignee'] = $assignee;
+                        }
+                    })(),
+                    'pull_request' => (function () use ($payload, &$summaryFields) {
+                        $summaryFields['PR'] = '#' . data_get($payload, 'pull_request.number', '?') . ' — ' . data_get($payload, 'pull_request.title', '');
+                        $summaryFields['Branch'] = data_get($payload, 'pull_request.head.ref', '') . ' → ' . data_get($payload, 'pull_request.base.ref', '');
+                        if ($labels = data_get($payload, 'pull_request.labels')) {
+                            $summaryFields['Labels'] = collect($labels)->pluck('name')->join(', ');
+                        }
+                    })(),
+                    'issue_comment' => (function () use ($payload, &$summaryFields) {
+                        $issueNumber = data_get($payload, 'issue.number', '?');
+                        $summaryFields['Issue'] = '#' . $issueNumber . ' — ' . data_get($payload, 'issue.title', '');
+                        $body = data_get($payload, 'comment.body', '');
+                        $summaryFields['Comment'] = Str::limit($body, 200);
+                    })(),
+                    'pull_request_review_comment', 'pull_request_review' => (function () use ($payload, &$summaryFields) {
+                        $summaryFields['PR'] = '#' . data_get($payload, 'pull_request.number', '?') . ' — ' . data_get($payload, 'pull_request.title', '');
+                        $body = data_get($payload, 'comment.body', data_get($payload, 'review.body', ''));
+                        if ($body) {
+                            $summaryFields['Comment'] = Str::limit($body, 200);
+                        }
+                    })(),
+                    'push' => (function () use ($payload, &$summaryFields) {
+                        $ref = data_get($payload, 'ref', '');
+                        $summaryFields['Branch'] = str_replace('refs/heads/', '', $ref);
+                        $commits = data_get($payload, 'commits', []);
+                        $summaryFields['Commits'] = count($commits);
+                        if ($head = data_get($payload, 'head_commit.message')) {
+                            $summaryFields['Head Commit'] = Str::limit($head, 120);
+                        }
+                    })(),
+                    default => null,
+                };
+
+                if ($action) {
+                    $summaryFields = array_merge(['Action' => $action], $summaryFields);
+                }
+            @endphp
+
+            @if (! empty($summaryFields))
+                <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 divide-y divide-zinc-200 dark:divide-zinc-700">
+                    @foreach ($summaryFields as $label => $value)
+                        <div class="flex px-4 py-2.5">
+                            <flux:text variant="subtle" class="text-xs uppercase w-28 shrink-0 pt-0.5">{{ $label }}</flux:text>
+                            <flux:text class="text-sm">{{ $value }}</flux:text>
+                        </div>
+                    @endforeach
                 </div>
-
-                @if ($agentRun->steps && count($agentRun->steps) > 0)
-                    <div class="mt-4">
-                        <flux:text variant="subtle" class="text-xs uppercase mb-2">{{ __('Agent Steps') }}</flux:text>
-                        <div class="space-y-3 max-h-96 overflow-y-auto">
-                            @foreach ($agentRun->steps as $stepIndex => $step)
-                                <div class="rounded-lg border border-zinc-200 dark:border-zinc-700 p-3">
-                                    <div class="flex items-center justify-between mb-2">
-                                        <flux:text class="text-xs font-medium">{{ __('Step') }} {{ $stepIndex + 1 }}</flux:text>
-                                        <div class="flex items-center gap-2">
-                                            @if (isset($step['usage']))
-                                                <flux:text class="text-xs text-zinc-500">
-                                                    {{ number_format(($step['usage']['promptTokens'] ?? 0) + ($step['usage']['completionTokens'] ?? 0)) }} {{ __('tokens') }}
-                                                </flux:text>
-                                            @endif
-                                            @if (isset($step['finish_reason']))
-                                                <flux:badge size="sm" color="{{ $step['finish_reason'] === 'stop' ? 'green' : 'amber' }}">
-                                                    {{ $step['finish_reason'] }}
-                                                </flux:badge>
-                                            @endif
-                                        </div>
-                                    </div>
-
-                                    @if (! empty($step['tool_calls']))
-                                        <div class="space-y-2 mb-2">
-                                            @foreach ($step['tool_calls'] as $toolCall)
-                                                <div class="rounded bg-blue-50 dark:bg-blue-900/20 p-2">
-                                                    <flux:text class="text-xs font-medium text-blue-700 dark:text-blue-300">
-                                                        {{ $toolCall['name'] ?? 'unknown' }}
-                                                    </flux:text>
-                                                    @if (! empty($toolCall['arguments']))
-                                                        <pre class="mt-1 text-xs font-mono text-blue-600 dark:text-blue-400 whitespace-pre-wrap break-all">{{ json_encode($toolCall['arguments'], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) }}</pre>
-                                                    @endif
-                                                </div>
-                                            @endforeach
-                                        </div>
-                                    @endif
-
-                                    @if (! empty($step['tool_results']))
-                                        <div class="space-y-2 mb-2">
-                                            @foreach ($step['tool_results'] as $toolResult)
-                                                <div class="rounded bg-emerald-50 dark:bg-emerald-900/20 p-2">
-                                                    <flux:text class="text-xs font-medium text-emerald-700 dark:text-emerald-300">
-                                                        {{ $toolResult['name'] ?? 'result' }}
-                                                    </flux:text>
-                                                    <pre class="mt-1 text-xs font-mono text-emerald-600 dark:text-emerald-400 whitespace-pre-wrap break-all max-h-32 overflow-y-auto">{{ is_string($toolResult['result'] ?? null) ? $toolResult['result'] : json_encode($toolResult['result'] ?? '', JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) }}</pre>
-                                                </div>
-                                            @endforeach
-                                        </div>
-                                    @endif
-
-                                    @if (! empty($step['text']))
-                                        <pre class="text-sm font-mono whitespace-pre-wrap text-zinc-700 dark:text-zinc-300">{{ $step['text'] }}</pre>
-                                    @endif
-                                </div>
-                            @endforeach
-                        </div>
-                    </div>
-                @endif
-
-                @if ($agentRun->diff)
-                    <div class="mt-4">
-                        <flux:text variant="subtle" class="text-xs uppercase mb-2">{{ __('Diff') }}</flux:text>
-                        <pre class="rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 p-4 text-xs font-mono whitespace-pre-wrap max-h-96 overflow-y-auto overflow-x-auto">@foreach (explode("\n", $agentRun->diff) as $line)@if (str_starts_with($line, '+') && ! str_starts_with($line, '+++'))<span class="text-green-600 dark:text-green-400">{{ $line }}</span>
-@elseif (str_starts_with($line, '-') && ! str_starts_with($line, '---'))<span class="text-red-600 dark:text-red-400">{{ $line }}</span>
-@elseif (str_starts_with($line, '@@'))<span class="text-blue-600 dark:text-blue-400">{{ $line }}</span>
-@elseif (str_starts_with($line, 'diff '))<span class="font-bold text-zinc-700 dark:text-zinc-300">{{ $line }}</span>
-@else{{ $line }}
-@endif @endforeach</pre>
-                    </div>
-                @endif
-
-                @if ($agentRun->output)
-                    <div class="mt-4">
-                        <flux:text variant="subtle" class="text-xs uppercase">{{ __('Final Output') }}</flux:text>
-                        <pre class="mt-2 rounded-lg bg-zinc-100 dark:bg-zinc-800 p-4 text-sm font-mono whitespace-pre-wrap max-h-64 overflow-y-auto">{{ $agentRun->output }}</pre>
-                    </div>
-                @endif
-
-                @if ($agentRun->error)
-                    <div class="mt-4">
-                        <flux:text variant="subtle" class="text-xs uppercase text-red-600 dark:text-red-400">{{ __('Error') }}</flux:text>
-                        <pre class="mt-2 rounded-lg bg-red-50 dark:bg-red-900/20 p-4 text-sm font-mono whitespace-pre-wrap text-red-800 dark:text-red-300">{{ $agentRun->error }}</pre>
-                    </div>
-                @endif
-
-                {{-- Quality Feedback --}}
-                @if ($agentRun->status === 'success' || $agentRun->status === 'failed')
-                    @php $existingFeedback = $this->getExistingFeedback(); @endphp
-                    <div class="mt-6 rounded-lg border border-zinc-200 dark:border-zinc-700 p-4">
-                        <flux:text variant="subtle" class="text-xs uppercase mb-3">{{ __('Was this helpful?') }}</flux:text>
-
-                        @if ($feedbackMessage)
-                            <flux:callout variant="success" class="mb-3">
-                                {{ $feedbackMessage }}
-                            </flux:callout>
-                        @endif
-
-                        <div class="flex items-center gap-3 mb-3">
-                            <flux:button
-                                size="sm"
-                                variant="{{ $existingFeedback?->rating === \App\Enums\FeedbackRating::Helpful ? 'primary' : 'ghost' }}"
-                                icon="hand-thumb-up"
-                                wire:click="submitFeedback('helpful')"
-                            >
-                                {{ __('Helpful') }}
-                            </flux:button>
-                            <flux:button
-                                size="sm"
-                                variant="{{ $existingFeedback?->rating === \App\Enums\FeedbackRating::NotHelpful ? 'danger' : 'ghost' }}"
-                                icon="hand-thumb-down"
-                                wire:click="submitFeedback('not_helpful')"
-                            >
-                                {{ __('Not helpful') }}
-                            </flux:button>
-                        </div>
-
-                        <flux:textarea
-                            wire:model="feedbackComment"
-                            placeholder="{{ __('Optional: tell us more...') }}"
-                            rows="2"
-                            class="text-sm"
-                        />
-                    </div>
-                @endif
             @endif
 
-            <div class="mt-6 flex justify-end">
-                <flux:button variant="ghost" wire:click="$set('showAgentRunDetail', false)">{{ __('Close') }}</flux:button>
+            <div x-show="showPayload" x-cloak class="mt-3">
+                <pre class="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 p-4 text-sm font-mono overflow-x-auto max-h-96 overflow-y-auto">{{ json_encode($log->payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) }}</pre>
             </div>
-        </flux:modal>
+        </div>
     @endif
 </section>
 

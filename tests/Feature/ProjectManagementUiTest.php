@@ -73,7 +73,7 @@ test('can remove a project with confirmation', function () {
 
 test('can import config for a project', function () {
     $project = Project::factory()->create(['repo' => 'owner/repo']);
-    $dummyConfig = new DispatchConfig(version: 1, agentName: 'test', agentExecutor: 'laravel-ai');
+    $dummyConfig = new DispatchConfig(version: 1);
 
     $mock = Mockery::mock(ConfigSyncer::class);
     $mock->shouldReceive('import')
@@ -108,7 +108,6 @@ test('can edit a project', function () {
 
     Volt::test('pages::projects.index')
         ->call('editProject', $project->id)
-        ->set('editAgentName', 'sparky')
         ->set('editAgentProvider', 'anthropic')
         ->set('editAgentModel', 'claude-sonnet-4-6')
         ->set('editAgentInstructionsFile', 'SPARKY.md')
@@ -117,8 +116,6 @@ test('can edit a project', function () {
 
     $project->refresh();
     expect($project->repo)->toBe('owner/original');
-    expect($project->agent_name)->toBe('sparky');
-    expect($project->agent_executor)->toBe('laravel-ai');
     expect($project->agent_provider)->toBe('anthropic');
     expect($project->agent_model)->toBe('claude-sonnet-4-6');
     expect($project->agent_instructions_file)->toBe('SPARKY.md');
@@ -129,8 +126,6 @@ test('project show page displays project details', function () {
     $project = Project::factory()->create([
         'repo' => 'owner/my-repo',
         'path' => '/tmp/my-repo',
-        'agent_name' => 'sparky',
-        'agent_executor' => 'laravel-ai',
         'agent_provider' => 'anthropic',
         'agent_model' => 'claude-sonnet-4-6',
         'agent_instructions_file' => 'SPARKY.md',
@@ -139,7 +134,6 @@ test('project show page displays project details', function () {
 
     Volt::test('pages::projects.show', ['project' => $project->id])
         ->assertSee('owner/my-repo')
-        ->assertSee('sparky')
         ->assertSee('anthropic')
         ->assertSee('claude-sonnet-4-6')
         ->assertSee('SPARKY.md')

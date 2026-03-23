@@ -95,9 +95,6 @@ class ConfigLoader
             throw new ConfigLoadException("Field 'agent' must be a mapping in {$filePath}");
         }
 
-        $this->requireField($agent, 'name', $filePath, 'agent.');
-        $this->requireField($agent, 'executor', $filePath, 'agent.');
-
         $this->requireField($data, 'rules', $filePath);
 
         if (! is_array($data['rules'])) {
@@ -113,8 +110,6 @@ class ConfigLoader
 
         return new DispatchConfig(
             version: (int) $data['version'],
-            agentName: $agent['name'],
-            agentExecutor: $agent['executor'],
             agentInstructionsFile: $agent['instructions_file'] ?? null,
             agentProvider: $agent['provider'] ?? null,
             agentModel: $agent['model'] ?? null,

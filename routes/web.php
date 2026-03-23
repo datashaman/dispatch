@@ -16,6 +16,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::livewire('projects/{project}/config', 'pages::config.index')->name('config.index');
     Route::livewire('webhooks', 'pages::webhooks.index')->name('webhooks.index');
     Route::livewire('webhooks/{webhookLog}', 'pages::webhooks.show')->name('webhooks.show');
+    Route::livewire('agent-runs/{agentRun}', 'pages::agent-runs.show')->name('agent-runs.show');
     Route::livewire('cost', 'pages::cost.index')->name('cost.index');
     Route::livewire('templates', 'pages::templates.index')->name('templates.index');
 });
