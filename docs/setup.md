@@ -6,7 +6,7 @@ This guide covers installing Dispatch, configuring it, connecting a GitHub App, 
 
 | Requirement | Notes |
 |-------------|-------|
-| PHP 8.5+ | With `sqlite3`, `pdo_sqlite`, `redis`, `pcntl` extensions |
+| PHP 8.4+ | With `sqlite3`, `pdo_sqlite`, `redis`, `pcntl` extensions |
 | Composer | Latest stable |
 | Node.js 20+ | For front-end assets |
 | Redis | For queuing agent jobs |

@@ -2,6 +2,14 @@
 
 ## Open
 
+### P1: System-wide per-user data scoping
+**What:** Add per-user scoping to all data queries. Currently CostService, webhook logs page, agent runs page, cost page, and project listings all query globally without filtering by `auth()->user()`. Any authenticated user sees all users' data.
+**Why:** Dispatch is deployed multi-user at dispatch.datashaman.com. Without scoping, User A sees User B's webhooks, agent runs, costs, and budget data. This is a data leak.
+**Pros:** Fixes a real security/privacy issue. Sets the pattern for all future queries.
+**Cons:** Touches many files (CostService, webhook index/show, agent-run pages, cost page, project pages). Needs careful testing to ensure no query breaks.
+**Context:** `Project` already has `user_id` + `belongsTo(User)`. `WebhookLog` has `project_id`. `AgentRun` links to `WebhookLog`. The scoping chain is: `User → Projects → WebhookLogs → AgentRuns`. Dashboard (public-dashboard branch) implements scoped queries as a reference pattern. CostService needs an optional `?User` parameter or a global scope. Caught by Codex during /plan-eng-review on 2026-03-23.
+**Depends on:** Nothing — can be done independently. Dashboard PR sets the pattern.
+
 ### P2: Config Editor — config diff preview on save
 **What:** Show a side-by-side diff modal (old YAML vs new YAML) before writing dispatch.yml to disk. User confirms or cancels.
 **Why:** Builds trust for users editing complex configs — they can see exactly what changed before committing to disk. Especially valuable when editing YAML directly.

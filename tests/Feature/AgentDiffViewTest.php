@@ -67,7 +67,7 @@ test('agent run stores and retrieves diff data', function () {
     expect($run->diff)->toContain('-old');
 });
 
-test('webhook show page displays diff in agent run detail', function () {
+test('agent run detail page displays diff', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
 
@@ -79,14 +79,13 @@ test('webhook show page displays diff in agent run detail', function () {
         'diff' => "diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-old line\n+new line",
     ]);
 
-    Volt::test('pages::webhooks.show', ['webhookLog' => $webhookLog->id])
-        ->call('viewAgentRun', $run->id)
+    Volt::test('pages::agent-runs.show', ['agentRun' => $run->id])
         ->assertSee('Diff')
         ->assertSee('old line')
         ->assertSee('new line');
 });
 
-test('webhook show page hides diff section when no diff', function () {
+test('agent run detail page hides diff section when no diff', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
 
@@ -98,7 +97,6 @@ test('webhook show page hides diff section when no diff', function () {
         'diff' => null,
     ]);
 
-    Volt::test('pages::webhooks.show', ['webhookLog' => $webhookLog->id])
-        ->call('viewAgentRun', $run->id)
+    Volt::test('pages::agent-runs.show', ['agentRun' => $run->id])
         ->assertDontSee('diff --git');
 });

@@ -57,8 +57,6 @@ test('ProcessAgentRun job dispatches to agents queue', function () {
 
     $dispatchConfig = new DispatchConfig(
         version: 1,
-        agentName: 'test',
-        agentExecutor: 'laravel-ai',
         agentProvider: 'anthropic',
         agentModel: 'claude-sonnet-4-6',
     );
@@ -88,8 +86,6 @@ test('ProcessAgentRun job is configured on agents queue by default', function ()
 
     $dispatchConfig = new DispatchConfig(
         version: 1,
-        agentName: 'test',
-        agentExecutor: 'laravel-ai',
         agentProvider: 'anthropic',
         agentModel: 'claude-sonnet-4-6',
     );

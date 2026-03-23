@@ -75,7 +75,7 @@
 ## Component Patterns (Flux UI)
 These are the existing patterns in the codebase. New V2 features should reuse them:
 
-- **Stat grid:** 4-col (2x2 on mobile) of zinc-800 cards with label/value/trend — used on webhook detail, cost dashboard
+- **Stat grid:** 4-col (2x2 on mobile) of zinc-800 cards with label/value/trend — used on mission control dashboard, webhook detail, cost dashboard
 - **Status badges:** `flux:badge` with semantic colors — green (completed), amber (running), red (failed), indigo (queued), neutral (skipped/idle)
 - **Tables:** `flux:table` with zinc-700 borders, uppercase 11px column headers, hover row highlight
 - **Modals:** `flux:modal` centered, 60% width desktop, full-screen on mobile. Tabs via `flux:tabs` for multi-section content.

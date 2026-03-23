@@ -186,8 +186,6 @@ test('dispatcher dispatches pipeline rules in dependency order via chain', funct
     $project = Project::factory()->create();
     $config = new DispatchConfig(
         version: 1,
-        agentName: 'test',
-        agentExecutor: 'laravel-ai',
         rules: [],
     );
 
@@ -241,8 +239,6 @@ test('dependent job loads upstream outputs at execution time', function () {
     $project = Project::factory()->create();
     $config = new DispatchConfig(
         version: 1,
-        agentName: 'test',
-        agentExecutor: 'laravel-ai',
         rules: [],
     );
 
@@ -280,8 +276,6 @@ test('dependent job skips when upstream has failed', function () {
     $project = Project::factory()->create();
     $config = new DispatchConfig(
         version: 1,
-        agentName: 'test',
-        agentExecutor: 'laravel-ai',
         rules: [],
     );
 
@@ -297,8 +291,6 @@ test('dispatcher handles circular dependency gracefully', function () {
     $project = Project::factory()->create();
     $config = new DispatchConfig(
         version: 1,
-        agentName: 'test',
-        agentExecutor: 'laravel-ai',
         rules: [],
     );
 
@@ -324,8 +316,6 @@ test('dispatcher dispatches normally when no dependencies', function () {
     $project = Project::factory()->create();
     $config = new DispatchConfig(
         version: 1,
-        agentName: 'test',
-        agentExecutor: 'laravel-ai',
         rules: [],
     );
 

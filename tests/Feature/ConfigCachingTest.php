@@ -33,9 +33,7 @@ function cachingYaml(bool $cacheEnabled = true): string
 
     return <<<YAML
 version: 1
-agent:
-  name: "sparky"
-  executor: "laravel-ai"
+agent: {}
 
 cache:
   config: {$cacheValue}
@@ -93,7 +91,7 @@ YAML);
 
     $config2 = $this->loader->load($this->tempDir);
 
-    expect($config2->agentName)->toBe('sparky');
+    expect($config2->cacheConfig)->toBeTrue();
     expect($config2->rules[0]->id)->toBe('analyze');
 });
 
@@ -118,9 +116,7 @@ it('loads fresh config after cache is cleared', function () {
     // Modify the file
     writeCacheConfig($this->tempDir, <<<'YAML'
 version: 1
-agent:
-  name: "updated-agent"
-  executor: "laravel-ai"
+agent: {}
 
 cache:
   config: true
@@ -134,7 +130,7 @@ YAML);
     $this->loader->clearCache($this->tempDir);
     $config = $this->loader->load($this->tempDir);
 
-    expect($config->agentName)->toBe('updated-agent');
+    expect($config->cacheConfig)->toBeTrue();
     expect($config->rules[0]->id)->toBe('updated');
 });
 

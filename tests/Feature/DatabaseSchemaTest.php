@@ -28,17 +28,13 @@ test('project repo is unique', function () {
 
 test('project has agent config columns', function () {
     $project = Project::factory()->create([
-        'agent_name' => 'sparky',
-        'agent_executor' => 'laravel-ai',
         'agent_provider' => 'anthropic',
         'agent_model' => 'claude-sonnet-4-6',
         'agent_instructions_file' => 'SPARKY.md',
         'agent_secrets' => ['api_key' => 'sk-test-key-123'],
     ]);
 
-    expect($project->agent_name)->toBe('sparky')
-        ->and($project->agent_executor)->toBe('laravel-ai')
-        ->and($project->agent_provider)->toBe('anthropic')
+    expect($project->agent_provider)->toBe('anthropic')
         ->and($project->agent_model)->toBe('claude-sonnet-4-6')
         ->and($project->agent_instructions_file)->toBe('SPARKY.md')
         ->and($project->agent_secrets)->toBe(['api_key' => 'sk-test-key-123']);

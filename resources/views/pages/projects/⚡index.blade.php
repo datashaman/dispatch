@@ -4,6 +4,7 @@ use App\Models\GitHubInstallation;
 use App\Models\Project;
 use App\Services\ConfigSyncer;
 use App\Services\DefaultRulesService;
+use App\Services\StitchBridge;
 use App\Services\GitHubAppService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
@@ -17,7 +18,6 @@ use Livewire\Component;
 new #[Title('Projects')] class extends Component {
     public bool $showEditForm = false;
     public ?int $editingProjectId = null;
-    public ?string $editAgentName = null;
     public ?string $editAgentProvider = null;
     public ?string $editAgentModel = null;
     public ?string $editAgentInstructionsFile = null;
@@ -246,16 +246,74 @@ new #[Title('Projects')] class extends Component {
     public bool $loadingStitchProjects = false;
     public string $stitchProjectError = '';
 
+    public array $stitchProjects = [];
+
+    public bool $stitchProjectsLoaded = false;
+
+    public ?string $stitchProjectsError = null;
+
+    public function fetchStitchProjects(): void
+    {
+        $this->stitchProjectsError = null;
+
+        try {
+            $apiKey = $this->resolveStitchApiKey();
+
+            if (! $apiKey) {
+                $this->stitchProjectsError = 'No Stitch API key configured.';
+
+                return;
+            }
+
+            $this->stitchProjects = app(StitchBridge::class)->listProjects($apiKey);
+            $this->stitchProjectsLoaded = true;
+        } catch (\Throwable $e) {
+            $this->stitchProjectsError = 'Failed to load projects: '.$e->getMessage();
+        }
+    }
+
+    public function linkStitchProject(string $stitchProjectId): void
+    {
+        $project = Project::findOrFail($this->editingProjectId);
+        $project->update(['stitch_project_id' => $stitchProjectId]);
+        $this->editStitchProjectId = $stitchProjectId;
+        $this->statusMessage = 'Stitch project linked.';
+    }
+
+    public function unlinkStitchProject(): void
+    {
+        $project = Project::findOrFail($this->editingProjectId);
+        $project->update(['stitch_project_id' => null]);
+        $this->editStitchProjectId = null;
+        $this->statusMessage = 'Stitch project unlinked.';
+    }
+
+    protected function resolveStitchApiKey(): ?string
+    {
+        // Project-level key first
+        $project = Project::find($this->editingProjectId);
+        $secrets = $project?->agent_secrets ?? [];
+
+        if (! empty($secrets['stitch'])) {
+            return $secrets['stitch'];
+        }
+
+        // Fall back to user-level key
+        return Auth::user()->api_keys['stitch'] ?? null;
+    }
+
     public function editProject(int $id): void
     {
         $project = Project::findOrFail($id);
         $this->editingProjectId = $project->id;
-        $this->editAgentName = $project->agent_name;
         $this->editAgentProvider = $project->agent_provider;
         $this->editAgentModel = $project->agent_model;
         $this->editAgentInstructionsFile = $project->agent_instructions_file;
         $this->editCacheConfig = (bool) $project->cache_config;
         $this->editStitchProjectId = $project->stitch_project_id;
+        $this->stitchProjects = [];
+        $this->stitchProjectsLoaded = false;
+        $this->stitchProjectsError = null;
 
         $secrets = $project->agent_secrets ?? [];
         $this->storedProviderKeys = [];
@@ -319,7 +377,6 @@ new #[Title('Projects')] class extends Component {
     {
         $project = Project::findOrFail($this->editingProjectId);
         $project->update([
-            'agent_name' => $this->editAgentName,
             'agent_executor' => 'laravel-ai',
             'agent_provider' => $this->editAgentProvider,
             'agent_model' => $this->editAgentModel,
@@ -541,11 +598,6 @@ new #[Title('Projects')] class extends Component {
 
             <div class="mt-6 space-y-4">
                 <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <flux:field>
-                        <flux:label>{{ __('Agent Name') }}</flux:label>
-                        <flux:input wire:model="editAgentName" placeholder="e.g. sparky" />
-                    </flux:field>
-
                     <flux:field>
                         <flux:label>{{ __('Instructions File') }}</flux:label>
                         <flux:input wire:model="editAgentInstructionsFile" placeholder="e.g. SPARKY.md" />

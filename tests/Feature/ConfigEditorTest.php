@@ -43,7 +43,6 @@ function minimalYaml(): string
     return <<<'YAML'
 version: 1
 agent:
-  name: "test-agent"
   executor: "laravel-ai"
   provider: "anthropic"
   model: "claude-sonnet-4-6"
@@ -82,7 +81,6 @@ test('loads config from dispatch.yml', function () {
     writeDispatchYml($this->tempDir, minimalYaml());
 
     Volt::test('pages::config.index', ['project' => $this->project])
-        ->assertSet('configData.agent.name', 'test-agent')
         ->assertSet('configData.agent.executor', 'laravel-ai')
         ->assertSee('test/config-editor')
         ->assertSee('Hello Rule');
@@ -107,12 +105,12 @@ test('saves config to dispatch.yml', function () {
     writeDispatchYml($this->tempDir, minimalYaml());
 
     Volt::test('pages::config.index', ['project' => $this->project])
-        ->set('configData.agent.name', 'updated-agent')
+        ->set('configData.agent.provider', 'anthropic')
         ->call('saveConfig')
         ->assertSet('statusMessage', 'dispatch.yml saved.');
 
     $saved = Yaml::parseFile($this->tempDir.'/dispatch.yml');
-    expect($saved['agent']['name'])->toBe('updated-agent');
+    expect($saved['agent']['provider'])->toBe('anthropic');
 });
 
 test('detects mtime conflict on save', function () {
@@ -150,9 +148,9 @@ test('validates required fields before saving', function () {
     writeDispatchYml($this->tempDir, minimalYaml());
 
     Volt::test('pages::config.index', ['project' => $this->project])
-        ->set('configData.agent.name', '')
+        ->set('configData.rules.0.id', '')
         ->call('saveConfig')
-        ->assertSet('errorMessage', fn ($msg) => str_contains($msg, 'Agent name is required'));
+        ->assertSet('errorMessage', fn ($msg) => str_contains($msg, 'ID is required'));
 });
 
 test('validates rule required fields', function () {
@@ -330,7 +328,7 @@ test('isDirty is true after modifying config', function () {
     writeDispatchYml($this->tempDir, minimalYaml());
 
     $component = Volt::test('pages::config.index', ['project' => $this->project])
-        ->set('configData.agent.name', 'changed-agent');
+        ->set('configData.agent.provider', 'openai');
 
     expect($component->get('isDirty'))->toBeTrue();
 });
@@ -378,7 +376,7 @@ test('yaml preview shows current config state', function () {
     $component = Volt::test('pages::config.index', ['project' => $this->project]);
 
     $preview = $component->get('yamlPreview');
-    expect($preview)->toContain('test-agent');
+    expect($preview)->toContain('laravel-ai');
     expect($preview)->toContain('hello');
 });
 
@@ -441,7 +439,7 @@ test('ConfigWriter arrayToYaml produces valid YAML', function () {
     $writer = app(ConfigWriter::class);
     $data = [
         'version' => 1,
-        'agent' => ['name' => 'test', 'executor' => 'laravel-ai'],
+        'agent' => ['executor' => 'laravel-ai'],
         'rules' => [
             ['id' => 'r1', 'event' => 'issues.opened', 'prompt' => 'Do something'],
         ],
@@ -518,7 +516,7 @@ test('ConfigWriter save returns success result', function () {
 
     $result = $writer->save($this->project, [
         'version' => 1,
-        'agent' => ['name' => 'test', 'executor' => 'laravel-ai'],
+        'agent' => ['executor' => 'laravel-ai'],
         'rules' => [
             ['id' => 'r1', 'event' => 'issues.opened', 'prompt' => 'Do it'],
         ],
