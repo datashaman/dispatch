@@ -25,11 +25,13 @@
         <a href="/" class="text-lg font-semibold tracking-tight">Dispatch</a>
         <div class="flex items-center gap-4 text-sm">
             <a href="https://github.com/datashaman/dispatch" class="text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors duration-150">GitHub</a>
-            @auth
-                <a href="{{ route('dashboard') }}" class="inline-flex items-center px-3 py-1.5 rounded-md bg-indigo-500 text-white text-sm font-medium hover:bg-indigo-400 transition-colors duration-150">Dashboard</a>
-            @else
-                <a href="{{ route('login') }}" class="inline-flex items-center px-3 py-1.5 rounded-md bg-indigo-500 text-white text-sm font-medium hover:bg-indigo-400 transition-colors duration-150">Log in</a>
-            @endauth
+            @unless(\App\Http\Middleware\LaunchLockdown::isActive(request()))
+                @auth
+                    <a href="{{ route('dashboard') }}" class="inline-flex items-center px-3 py-1.5 rounded-md bg-indigo-500 text-white text-sm font-medium hover:bg-indigo-400 transition-colors duration-150">Dashboard</a>
+                @else
+                    <a href="{{ route('login') }}" class="inline-flex items-center px-3 py-1.5 rounded-md bg-indigo-500 text-white text-sm font-medium hover:bg-indigo-400 transition-colors duration-150">Log in</a>
+                @endauth
+            @endunless
         </div>
     </nav>
 
@@ -38,11 +40,27 @@
         <h1 class="text-3xl font-semibold tracking-tight leading-tight">GitHub Actions, but the actions are AI agents</h1>
         <p class="mt-3 text-base text-zinc-600 dark:text-zinc-400 max-w-xl">Define rules in YAML. Connect your repo. AI agents handle the rest — triaging issues, reviewing code, responding to discussions.</p>
         <div class="mt-5 flex items-center gap-3">
-            @auth
-                <a href="{{ route('dashboard') }}" class="inline-flex items-center px-4 py-2 rounded-md bg-indigo-500 text-white text-sm font-medium hover:bg-indigo-400 transition-colors duration-150">Get Started</a>
+            @if(\App\Http\Middleware\LaunchLockdown::isActive(request()))
+                {{-- Email subscribe form for locked-down visitors --}}
+                @if(session('subscribed'))
+                    <p class="text-sm text-emerald-600 dark:text-emerald-400 font-medium">Thanks! We'll notify you when we launch.</p>
+                @else
+                    <form action="{{ route('subscribe') }}" method="POST" class="flex items-center gap-2">
+                        @csrf
+                        <input type="email" name="email" required placeholder="you@example.com" class="px-3 py-2 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+                        <button type="submit" class="inline-flex items-center px-4 py-2 rounded-md bg-indigo-500 text-white text-sm font-medium hover:bg-indigo-400 transition-colors duration-150">Notify me</button>
+                    </form>
+                    @error('email')
+                        <p class="text-sm text-red-500">{{ $message }}</p>
+                    @enderror
+                @endif
             @else
-                <a href="{{ route('login') }}" class="inline-flex items-center px-4 py-2 rounded-md bg-indigo-500 text-white text-sm font-medium hover:bg-indigo-400 transition-colors duration-150">Get Started</a>
-            @endauth
+                @auth
+                    <a href="{{ route('dashboard') }}" class="inline-flex items-center px-4 py-2 rounded-md bg-indigo-500 text-white text-sm font-medium hover:bg-indigo-400 transition-colors duration-150">Get Started</a>
+                @else
+                    <a href="{{ route('login') }}" class="inline-flex items-center px-4 py-2 rounded-md bg-indigo-500 text-white text-sm font-medium hover:bg-indigo-400 transition-colors duration-150">Get Started</a>
+                @endauth
+            @endif
             <a href="https://github.com/datashaman/dispatch" class="inline-flex items-center px-4 py-2 rounded-md border border-zinc-300 dark:border-zinc-700 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors duration-150">View on GitHub</a>
         </div>
     </header>
