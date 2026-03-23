@@ -12,7 +12,6 @@
  *   node stitch-bridge.js edit --screen <id> --prompt <text>
  *   node stitch-bridge.js list-projects
  *   node stitch-bridge.js create-project --title <text>
- *   node stitch-bridge.js list-projects
  *
  * Environment:
  *   STITCH_API_KEY — required, read from process.env (never passed via CLI args)
@@ -28,7 +27,6 @@ function usage() {
   stitch-bridge.js edit --screen <id> --prompt <text>
   stitch-bridge.js list-projects
   stitch-bridge.js create-project --title <text>
-  stitch-bridge.js list-projects
 
 Device types: ${VALID_DEVICES.join(', ')}
 Requires STITCH_API_KEY environment variable.`);
@@ -218,21 +216,6 @@ async function createProject(client, args) {
   };
 }
 
-async function listProjects(client) {
-  const result = await client.callTool('list_projects', {});
-
-  const data = result?.content?.[0]?.text ? JSON.parse(result.content[0].text) : result;
-
-  // Normalize to array of { project_id, title }
-  const projects = Array.isArray(data) ? data : (data.projects || []);
-
-  return {
-    projects: projects.map(p => ({
-      project_id: p.projectId || p.project_id || p.id,
-      title: p.title || p.name || '',
-    })),
-  };
-}
 
 async function main() {
   const { command, args } = parseArgs(process.argv);
@@ -267,9 +250,6 @@ async function main() {
         break;
       case 'create-project':
         result = await createProject(client, args);
-        break;
-      case 'list-projects':
-        result = await listProjects(client);
         break;
       default:
         console.error(`Unknown command: ${command}`);

@@ -246,62 +246,6 @@ new #[Title('Projects')] class extends Component {
     public bool $loadingStitchProjects = false;
     public string $stitchProjectError = '';
 
-    public array $stitchProjects = [];
-
-    public bool $stitchProjectsLoaded = false;
-
-    public ?string $stitchProjectsError = null;
-
-    public function fetchStitchProjects(): void
-    {
-        $this->stitchProjectsError = null;
-
-        try {
-            $apiKey = $this->resolveStitchApiKey();
-
-            if (! $apiKey) {
-                $this->stitchProjectsError = 'No Stitch API key configured.';
-
-                return;
-            }
-
-            $this->stitchProjects = app(StitchBridge::class)->listProjects($apiKey);
-            $this->stitchProjectsLoaded = true;
-        } catch (\Throwable $e) {
-            $this->stitchProjectsError = 'Failed to load projects: '.$e->getMessage();
-        }
-    }
-
-    public function linkStitchProject(string $stitchProjectId): void
-    {
-        $project = Project::findOrFail($this->editingProjectId);
-        $project->update(['stitch_project_id' => $stitchProjectId]);
-        $this->editStitchProjectId = $stitchProjectId;
-        $this->statusMessage = 'Stitch project linked.';
-    }
-
-    public function unlinkStitchProject(): void
-    {
-        $project = Project::findOrFail($this->editingProjectId);
-        $project->update(['stitch_project_id' => null]);
-        $this->editStitchProjectId = null;
-        $this->statusMessage = 'Stitch project unlinked.';
-    }
-
-    protected function resolveStitchApiKey(): ?string
-    {
-        // Project-level key first
-        $project = Project::find($this->editingProjectId);
-        $secrets = $project?->agent_secrets ?? [];
-
-        if (! empty($secrets['stitch'])) {
-            return $secrets['stitch'];
-        }
-
-        // Fall back to user-level key
-        return Auth::user()->api_keys['stitch'] ?? null;
-    }
-
     public function editProject(int $id): void
     {
         $project = Project::findOrFail($id);
@@ -311,9 +255,6 @@ new #[Title('Projects')] class extends Component {
         $this->editAgentInstructionsFile = $project->agent_instructions_file;
         $this->editCacheConfig = (bool) $project->cache_config;
         $this->editStitchProjectId = $project->stitch_project_id;
-        $this->stitchProjects = [];
-        $this->stitchProjectsLoaded = false;
-        $this->stitchProjectsError = null;
 
         $secrets = $project->agent_secrets ?? [];
         $this->storedProviderKeys = [];
@@ -357,7 +298,7 @@ new #[Title('Projects')] class extends Component {
         $this->loadingStitchProjects = true;
 
         try {
-            $this->stitchProjects = app(\App\Services\StitchBridge::class)->listProjects($apiKey);
+            $this->stitchProjects = app(StitchBridge::class)->listProjects($apiKey);
         } catch (\Throwable $e) {
             Log::warning('StitchBridge: failed to list projects', ['error' => $e->getMessage()]);
             $this->stitchProjectError = 'Failed to load Stitch projects. Check your API key.';
