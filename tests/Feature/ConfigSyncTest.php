@@ -28,8 +28,6 @@ function fullYaml(): string
     return <<<'YAML'
 version: 1
 agent:
-  name: "sparky"
-  executor: "laravel-ai"
   instructions_file: "SPARKY.md"
   provider: "anthropic"
   model: "claude-sonnet-4-6"
@@ -102,8 +100,6 @@ describe('import', function () {
         $this->syncer->import($project);
 
         $project->refresh();
-        expect($project->agent_name)->toBe('sparky');
-        expect($project->agent_executor)->toBe('laravel-ai');
         expect($project->agent_provider)->toBe('anthropic');
         expect($project->agent_model)->toBe('claude-sonnet-4-6');
         expect($project->agent_instructions_file)->toBe('SPARKY.md');
@@ -192,7 +188,7 @@ describe('import', function () {
         $this->syncer->import($project);
 
         $project->refresh();
-        expect($project->agent_name)->toBe('new-agent');
+        expect($project->agent_provider)->toBe('anthropic');
     });
 });
 
@@ -208,7 +204,7 @@ describe('dispatch:import command', function () {
             ->assertSuccessful();
 
         $project->refresh();
-        expect($project->agent_name)->toBe('sparky');
+        expect($project->agent_provider)->toBe('anthropic');
     });
 
     it('fails for nonexistent project', function () {
@@ -235,7 +231,7 @@ describe('dispatch:sync command', function () {
             ->assertSuccessful();
 
         $project->refresh();
-        expect($project->agent_name)->toBe('sparky');
+        expect($project->agent_provider)->toBe('anthropic');
     });
 
     it('fails for invalid direction', function () {

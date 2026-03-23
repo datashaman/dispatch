@@ -158,7 +158,7 @@ test('webhook log detail shows agent runs with status and metrics', function () 
         ->assertSee('5.0s');
 });
 
-test('agent run detail modal shows output and error', function () {
+test('agent run detail page shows output and error', function () {
     $log = WebhookLog::factory()->create(['status' => 'processed']);
 
     $run = AgentRun::factory()->create([
@@ -169,10 +169,7 @@ test('agent run detail modal shows output and error', function () {
         'error' => 'Connection timed out',
     ]);
 
-    Volt::test('pages::webhooks.show', ['webhookLog' => $log->id])
-        ->call('viewAgentRun', $run->id)
-        ->assertSet('showAgentRunDetail', true)
-        ->assertSet('viewingAgentRunId', $run->id)
+    Volt::test('pages::agent-runs.show', ['agentRun' => $run->id])
         ->assertSee('Partial agent output here')
         ->assertSee('Connection timed out');
 });

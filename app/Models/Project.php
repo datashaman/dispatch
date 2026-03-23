@@ -17,7 +17,6 @@ class Project extends Model
         'repo',
         'path',
         'source',
-        'agent_name',
         'agent_executor',
         'agent_provider',
         'agent_model',

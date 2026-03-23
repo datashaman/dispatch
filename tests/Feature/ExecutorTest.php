@@ -221,8 +221,6 @@ test('ProcessAgentRun job uses executor to process agent run', function () {
 
     $dispatchConfig = new DispatchConfig(
         version: 1,
-        agentName: 'test',
-        agentExecutor: 'laravel-ai',
         agentProvider: 'anthropic',
         agentModel: 'claude-sonnet-4-20250514',
     );
@@ -271,8 +269,6 @@ test('ProcessAgentRun job resolves agent config with project-level fallback', fu
 
     $dispatchConfig = new DispatchConfig(
         version: 1,
-        agentName: 'test',
-        agentExecutor: 'laravel-ai',
         agentInstructionsFile: 'AGENT.md',
         agentProvider: 'anthropic',
         agentModel: 'claude-sonnet-4-20250514',
@@ -325,8 +321,6 @@ test('ProcessAgentRun job uses rule-level agent config when available', function
 
     $dispatchConfig = new DispatchConfig(
         version: 1,
-        agentName: 'test',
-        agentExecutor: 'laravel-ai',
         agentProvider: 'anthropic',
         agentModel: 'claude-sonnet-4-20250514',
     );
@@ -381,8 +375,6 @@ test('ProcessAgentRun job updates agent_run with failure on exception', function
 
     $dispatchConfig = new DispatchConfig(
         version: 1,
-        agentName: 'test',
-        agentExecutor: 'laravel-ai',
         agentProvider: 'anthropic',
         agentModel: 'claude-sonnet-4-20250514',
     );
@@ -429,8 +421,6 @@ test('ProcessAgentRun job renders prompt template with payload', function () {
 
     $dispatchConfig = new DispatchConfig(
         version: 1,
-        agentName: 'test',
-        agentExecutor: 'laravel-ai',
         agentProvider: 'anthropic',
         agentModel: 'claude-sonnet-4-20250514',
     );

@@ -128,8 +128,7 @@ class ConfigWriter
         $data = [
             'version' => $config->version,
             'agent' => array_filter([
-                'name' => $config->agentName,
-                'executor' => $config->agentExecutor,
+                'executor' => 'laravel-ai',
                 'instructions_file' => $config->agentInstructionsFile,
                 'provider' => $config->agentProvider,
                 'model' => $config->agentModel,

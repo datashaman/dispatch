@@ -32,8 +32,6 @@ function validYaml(): string
     return <<<'YAML'
 version: 1
 agent:
-  name: "sparky"
-  executor: "laravel-ai"
   instructions_file: "SPARKY.md"
   provider: "anthropic"
   model: "claude-sonnet-4-6"
@@ -82,8 +80,6 @@ it('loads a valid dispatch.yml and returns a DispatchConfig', function () {
     expect($config)
         ->toBeInstanceOf(DispatchConfig::class)
         ->version->toBe(1)
-        ->agentName->toBe('sparky')
-        ->agentExecutor->toBe('laravel-ai')
         ->agentInstructionsFile->toBe('SPARKY.md')
         ->agentProvider->toBe('anthropic')
         ->agentModel->toBe('claude-sonnet-4-6')
@@ -193,34 +189,6 @@ YAML);
 
     $this->loader->load($this->tempDir);
 })->throws(ConfigLoadException::class, "Missing required field 'agent'");
-
-it('throws when agent.name is missing', function () {
-    writeConfig($this->tempDir, <<<'YAML'
-version: 1
-agent:
-  executor: "laravel-ai"
-rules:
-  - id: "test"
-    event: "issues.labeled"
-    prompt: "Do something"
-YAML);
-
-    $this->loader->load($this->tempDir);
-})->throws(ConfigLoadException::class, "Missing required field 'agent.name'");
-
-it('throws when agent.executor is missing', function () {
-    writeConfig($this->tempDir, <<<'YAML'
-version: 1
-agent:
-  name: "sparky"
-rules:
-  - id: "test"
-    event: "issues.labeled"
-    prompt: "Do something"
-YAML);
-
-    $this->loader->load($this->tempDir);
-})->throws(ConfigLoadException::class, "Missing required field 'agent.executor'");
 
 it('throws when rules is missing', function () {
     writeConfig($this->tempDir, <<<'YAML'

@@ -340,8 +340,6 @@ test('ProcessAgentRun loads conversation history from prior runs', function () {
 
     $dispatchConfig = new DispatchConfig(
         version: 1,
-        agentName: 'test',
-        agentExecutor: 'laravel-ai',
         agentProvider: 'anthropic',
         agentModel: 'claude-sonnet-4-20250514',
     );
@@ -419,8 +417,6 @@ test('ProcessAgentRun works when no prior conversation exists', function () {
 
     $dispatchConfig = new DispatchConfig(
         version: 1,
-        agentName: 'test',
-        agentExecutor: 'laravel-ai',
         agentProvider: 'anthropic',
         agentModel: 'claude-sonnet-4-20250514',
     );
@@ -473,8 +469,6 @@ test('ProcessAgentRun works with payloads without thread scope', function () {
 
     $dispatchConfig = new DispatchConfig(
         version: 1,
-        agentName: 'test',
-        agentExecutor: 'laravel-ai',
         agentProvider: 'anthropic',
         agentModel: 'claude-sonnet-4-20250514',
     );

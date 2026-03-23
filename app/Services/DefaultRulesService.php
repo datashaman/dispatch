@@ -38,12 +38,8 @@ class DefaultRulesService
      */
     protected function buildDefaultConfig(Project $project): DispatchConfig
     {
-        $agentName = basename($project->repo);
-
         return new DispatchConfig(
             version: 1,
-            agentName: $agentName,
-            agentExecutor: 'laravel-ai',
             agentInstructionsFile: 'AGENTS.md',
             agentProvider: 'anthropic',
             agentModel: 'claude-sonnet-4-6',
