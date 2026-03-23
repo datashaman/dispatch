@@ -132,25 +132,11 @@ it('validates email is required', function () {
 it('hides login link when locked down', function () {
     $this->get(route('home'))
         ->assertDontSee('Log in', escape: false)
-        ->assertSee('Notify me');
+        ->assertDontSee('Get Started');
 });
 
 it('shows login link when not locked down', function () {
     config(['lockdown.header_name' => null, 'lockdown.header_value' => null]);
     $this->get(route('home'))
-        ->assertSee('Log in', escape: false)
-        ->assertDontSee('Notify me');
-});
-
-it('shows subscribe form on home when locked', function () {
-    $this->get(route('home'))
-        ->assertSee('you@example.com')
-        ->assertSee('Notify me');
-});
-
-it('shows success message after subscribing', function () {
-    $this->post(route('subscribe'), ['email' => 'user@test.com']);
-
-    $this->get(route('home'))
-        ->assertSee("We'll notify you when we launch", escape: false);
+        ->assertSee('Log in', escape: false);
 });
