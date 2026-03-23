@@ -15,10 +15,12 @@
     ],
     "sail": false,
     "skills": [
+        "configuring-horizon",
         "fluxui-development",
         "livewire-development",
         "volt-development",
         "pest-testing",
+        "echo-development",
         "tailwindcss-development",
         "ai-sdk-development",
         "fortify-development",

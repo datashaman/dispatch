@@ -22,4 +22,6 @@ yarn-error.log
 /.vscode
 /.zed
 .worktrees/
+.claude/skills/gstack/
+.claude/worktrees/
 .gstack/
