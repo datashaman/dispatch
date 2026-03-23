@@ -47,6 +47,7 @@ Output Routing
 - **Live agent streaming** — watch agent execution in real time via Laravel Reverb
 - **Agent run diff view** — see exactly what files an agent changed
 - **Agent quality feedback** — rate agent outputs to improve future runs
+- **Mission control dashboard** — at-a-glance stats (webhooks, runs, success rate, spend), recent activity, budget health bars, quick actions, and fresh-install onboarding — all scoped per user
 - **Cost dashboard** — track token usage, set budgets, auto-pricing per model
 - **Webhook log UI** — inspect every inbound event, matched rule, rendered prompt, and agent output
 - **Docker deployment** — run Dispatch in containers with Docker Compose
@@ -56,7 +57,7 @@ Output Routing
 
 | Layer | Technology |
 |-------|-----------|
-| Backend | Laravel 12, PHP 8.4 |
+| Backend | Laravel 13, PHP 8.4 |
 | UI | Livewire 4, Volt, Flux UI, Tailwind CSS v4 |
 | AI | Laravel AI SDK (`laravel/ai`) |
 | Queue | Redis + Laravel Horizon |
