@@ -10,8 +10,8 @@
  * Usage:
  *   node stitch-bridge.js generate --project <id> --prompt <text> [--vibe <text>] [--device <type>]
  *   node stitch-bridge.js edit --screen <id> --prompt <text>
- *   node stitch-bridge.js create-project --title <text>
  *   node stitch-bridge.js list-projects
+ *   node stitch-bridge.js create-project --title <text>
  *
  * Environment:
  *   STITCH_API_KEY — required, read from process.env (never passed via CLI args)
@@ -25,8 +25,8 @@ function usage() {
   console.error(`Usage:
   stitch-bridge.js generate --project <id> --prompt <text> [--vibe <text>] [--device <type>]
   stitch-bridge.js edit --screen <id> --prompt <text>
-  stitch-bridge.js create-project --title <text>
   stitch-bridge.js list-projects
+  stitch-bridge.js create-project --title <text>
 
 Device types: ${VALID_DEVICES.join(', ')}
 Requires STITCH_API_KEY environment variable.`);
@@ -184,6 +184,16 @@ async function edit(client, args) {
   };
 }
 
+async function listProjects(client) {
+  const result = await client.callTool('list_projects', {});
+  const projects = result?.projects || [];
+
+  return projects.map((p) => ({
+    project_id: p.projectId || p.project_id || p.id || p.name?.split('/').pop(),
+    title: p.title || p.displayName || p.name || 'Untitled',
+  }));
+}
+
 async function createProject(client, args) {
   const { title } = args;
 
@@ -206,21 +216,6 @@ async function createProject(client, args) {
   };
 }
 
-async function listProjects(client) {
-  const result = await client.callTool('list_projects', {});
-
-  const data = result?.content?.[0]?.text ? JSON.parse(result.content[0].text) : result;
-
-  // Normalize to array of { project_id, title }
-  const projects = Array.isArray(data) ? data : (data.projects || []);
-
-  return {
-    projects: projects.map(p => ({
-      project_id: p.projectId || p.project_id || p.id,
-      title: p.title || p.name || '',
-    })),
-  };
-}
 
 async function main() {
   const { command, args } = parseArgs(process.argv);
@@ -250,11 +245,11 @@ async function main() {
       case 'edit':
         result = await edit(client, args);
         break;
-      case 'create-project':
-        result = await createProject(client, args);
-        break;
       case 'list-projects':
         result = await listProjects(client);
+        break;
+      case 'create-project':
+        result = await createProject(client, args);
         break;
       default:
         console.error(`Unknown command: ${command}`);

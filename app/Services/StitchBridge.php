@@ -46,15 +46,11 @@ class StitchBridge
     }
 
     /**
-     * List all Stitch projects for the given API key.
-     *
      * @return list<array{project_id: string, title: string}>
      */
     public function listProjects(string $apiKey): array
     {
-        $data = $this->callBridge(['list-projects'], $apiKey);
-
-        return $data['projects'] ?? [];
+        return $this->callBridge(['list-projects'], $apiKey);
     }
 
     public function createProject(string $title, string $apiKey): string

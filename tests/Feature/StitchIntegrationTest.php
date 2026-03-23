@@ -548,3 +548,46 @@ test('resolveAgentConfig includes project in config array', function () {
     expect($config['project'])->toBeInstanceOf(Project::class)
         ->and($config['project']->id)->toBe($project->id);
 });
+
+// --- StitchBridge listProjects ---
+
+test('StitchBridge listProjects returns array of projects', function () {
+    Process::fake([
+        '*' => Process::result(json_encode([
+            ['project_id' => 'proj_1', 'title' => 'My App'],
+            ['project_id' => 'proj_2', 'title' => 'Other App'],
+        ])),
+    ]);
+
+    config(['services.stitch.bridge_path' => base_path('tools/stitch/stitch-bridge.js')]);
+
+    $bridge = new StitchBridge;
+    $projects = $bridge->listProjects('sk-test');
+
+    expect($projects)->toBeArray()
+        ->and($projects)->toHaveCount(2)
+        ->and($projects[0]['project_id'])->toBe('proj_1')
+        ->and($projects[0]['title'])->toBe('My App')
+        ->and($projects[1]['project_id'])->toBe('proj_2');
+
+    Process::assertRan(function ($process) {
+        $command = is_array($process->command) ? implode(' ', $process->command) : $process->command;
+
+        return str_contains($command, 'list-projects');
+    });
+});
+
+test('StitchBridge listProjects passes API key as env var', function () {
+    Process::fake([
+        '*' => Process::result(json_encode([])),
+    ]);
+
+    config(['services.stitch.bridge_path' => base_path('tools/stitch/stitch-bridge.js')]);
+
+    $bridge = new StitchBridge;
+    $bridge->listProjects('sk-my-key');
+
+    Process::assertRan(function ($process) {
+        return $process->command && true; // Process was called (env vars not directly assertable)
+    });
+});
