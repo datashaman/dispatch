@@ -6,6 +6,7 @@ readonly class DispatchConfig
 {
     /**
      * @param  list<RuleConfig>  $rules
+     * @param  list<CustomEventConfig>  $customEvents
      */
     public function __construct(
         public int $version,
@@ -14,5 +15,6 @@ readonly class DispatchConfig
         public ?string $agentModel = null,
         public bool $cacheConfig = false,
         public array $rules = [],
+        public array $customEvents = [],
     ) {}
 }

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\DataTransferObjects\CustomEventConfig;
 use App\DataTransferObjects\DispatchConfig;
 use App\DataTransferObjects\FilterConfig;
 use App\DataTransferObjects\RuleConfig;
@@ -139,9 +140,36 @@ class ConfigWriter
             $data['cache'] = ['config' => true];
         }
 
+        if (! empty($config->customEvents)) {
+            $data['custom_events'] = array_map(
+                fn (CustomEventConfig $event) => $this->customEventToArray($event),
+                $config->customEvents,
+            );
+        }
+
         $data['rules'] = array_map(fn (RuleConfig $rule) => $this->ruleToArray($rule), $config->rules);
 
         return Yaml::dump($data, 10, 2, Yaml::DUMP_MULTI_LINE_LITERAL_BLOCK);
+    }
+
+    /**
+     * Convert a CustomEventConfig DTO to array for YAML output.
+     *
+     * @return array<string, mixed>
+     */
+    protected function customEventToArray(CustomEventConfig $event): array
+    {
+        $data = ['id' => $event->id];
+
+        if ($event->name !== null) {
+            $data['name'] = $event->name;
+        }
+
+        if ($event->description !== null) {
+            $data['description'] = $event->description;
+        }
+
+        return $data;
     }
 
     /**
