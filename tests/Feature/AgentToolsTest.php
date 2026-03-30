@@ -2,6 +2,7 @@
 
 use App\Ai\Tools\BashTool;
 use App\Ai\Tools\EditTool;
+use App\Ai\Tools\EmitCustomEventTool;
 use App\Ai\Tools\GlobTool;
 use App\Ai\Tools\GrepTool;
 use App\Ai\Tools\ReadTool;
@@ -249,7 +250,7 @@ test('ToolRegistry resolves all tools when no list specified', function () {
     $registry = new ToolRegistry;
     $tools = $registry->resolve([], $this->workDir);
 
-    expect($tools)->toHaveCount(8)
+    expect($tools)->toHaveCount(9)
         ->and($tools[0])->toBeInstanceOf(ReadTool::class)
         ->and($tools[1])->toBeInstanceOf(EditTool::class)
         ->and($tools[2])->toBeInstanceOf(WriteTool::class)
@@ -257,7 +258,8 @@ test('ToolRegistry resolves all tools when no list specified', function () {
         ->and($tools[4])->toBeInstanceOf(GlobTool::class)
         ->and($tools[5])->toBeInstanceOf(GrepTool::class)
         ->and($tools[6])->toBeInstanceOf(StitchGenerateTool::class)
-        ->and($tools[7])->toBeInstanceOf(StitchEditTool::class);
+        ->and($tools[7])->toBeInstanceOf(StitchEditTool::class)
+        ->and($tools[8])->toBeInstanceOf(EmitCustomEventTool::class);
 });
 
 test('ToolRegistry resolves only specified tools', function () {
@@ -280,7 +282,7 @@ test('ToolRegistry ignores unknown tool names', function () {
 test('ToolRegistry returns available tool names', function () {
     $names = ToolRegistry::availableTools();
 
-    expect($names)->toBe(['Read', 'Edit', 'Write', 'Bash', 'Glob', 'Grep', 'StitchGenerate', 'StitchEdit']);
+    expect($names)->toBe(['Read', 'Edit', 'Write', 'Bash', 'Glob', 'Grep', 'StitchGenerate', 'StitchEdit', 'EmitCustomEvent']);
 });
 
 test('all tools implement Tool interface', function () {

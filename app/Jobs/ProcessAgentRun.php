@@ -284,6 +284,7 @@ class ProcessAgentRun implements ShouldQueue
             'output_github_comment' => $output?->githubComment ?? false,
             'output_github_reaction' => $output?->githubReaction,
             'api_key' => $this->resolveApiKey($provider),
+            'event_depth' => (int) ($this->payload['_dispatch']['event_depth'] ?? 0),
         ];
     }
 

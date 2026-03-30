@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\DataTransferObjects\AgentConfig;
+use App\DataTransferObjects\CustomEventConfig;
 use App\DataTransferObjects\DispatchConfig;
 use App\DataTransferObjects\FilterConfig;
 use App\DataTransferObjects\OutputConfig;
@@ -106,6 +107,17 @@ class ConfigLoader
             $rules[] = $this->validateRule($ruleData, $index, $filePath);
         }
 
+        $customEvents = [];
+        if (isset($data['custom_events'])) {
+            if (! is_array($data['custom_events'])) {
+                throw new ConfigLoadException("Field 'custom_events' must be an array in {$filePath}");
+            }
+
+            foreach ($data['custom_events'] as $index => $eventData) {
+                $customEvents[] = $this->validateCustomEvent($eventData, $index, $filePath);
+            }
+        }
+
         $cache = $data['cache'] ?? [];
 
         return new DispatchConfig(
@@ -115,6 +127,7 @@ class ConfigLoader
             agentModel: $agent['model'] ?? null,
             cacheConfig: (bool) ($cache['config'] ?? false),
             rules: $rules,
+            customEvents: $customEvents,
         );
     }
 
@@ -168,6 +181,25 @@ class ConfigLoader
             output: isset($ruleData['output']) ? $this->parseOutputConfig($ruleData['output']) : null,
             retry: isset($ruleData['retry']) ? $this->parseRetryConfig($ruleData['retry']) : null,
             dependsOn: $dependsOn,
+        );
+    }
+
+    /**
+     * Validate a single custom event entry.
+     */
+    private function validateCustomEvent(mixed $eventData, int $index, string $filePath): CustomEventConfig
+    {
+        if (! is_array($eventData)) {
+            throw new ConfigLoadException("Custom event at index {$index} must be a mapping in {$filePath}");
+        }
+
+        $prefix = "custom_events[{$index}].";
+        $this->requireField($eventData, 'id', $filePath, $prefix);
+
+        return new CustomEventConfig(
+            id: $eventData['id'],
+            name: $eventData['name'] ?? null,
+            description: $eventData['description'] ?? null,
         );
     }
 

@@ -246,11 +246,13 @@ class LaravelAiExecutor implements Executor
     {
         $workingDirectory = $agentConfig['project_path'] ?? '';
         $project = $agentConfig['project'] ?? null;
+        $eventDepth = (int) ($agentConfig['event_depth'] ?? 0);
 
         return $this->toolRegistry->resolve(
             tools: $agentConfig['tools'] ?? [],
             workingDirectory: $workingDirectory,
             project: $project instanceof Project ? $project : null,
+            eventDepth: $eventDepth,
         );
     }
 }

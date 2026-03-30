@@ -67,6 +67,24 @@ new #[Title('Config Editor')] class extends Component {
     }
 
     #[Computed]
+    public function appEvents(): array
+    {
+        $events = [];
+        foreach ($this->configData['custom_events'] ?? [] as $event) {
+            $id = $event['id'] ?? '';
+            if ($id !== '') {
+                $key = 'app.'.$id;
+                $events[$key] = [
+                    'label' => $event['name'] ?? $id,
+                    'description' => $event['description'] ?? '',
+                ];
+            }
+        }
+
+        return $events;
+    }
+
+    #[Computed]
     public function filterOperators(): array
     {
         return array_map(fn (FilterOperator $op) => [
@@ -172,6 +190,20 @@ new #[Title('Config Editor')] class extends Component {
             ));
         } else {
             $data['rules'] = [];
+        }
+
+        // Normalize custom events
+        if (isset($data['custom_events']) && is_array($data['custom_events'])) {
+            $data['custom_events'] = array_values(array_map(
+                fn ($event) => [
+                    'id' => $event['id'] ?? '',
+                    'name' => $event['name'] ?? '',
+                    'description' => $event['description'] ?? '',
+                ],
+                $data['custom_events']
+            ));
+        } else {
+            $data['custom_events'] = [];
         }
 
         $this->configData = $data;
@@ -504,6 +536,29 @@ new #[Title('Config Editor')] class extends Component {
         $this->expandedRuleId = null;
     }
 
+    // --- Custom Event Management ---
+
+    public function addCustomEvent(): void
+    {
+        $this->configData['custom_events'][] = [
+            'id' => '',
+            'name' => '',
+            'description' => '',
+        ];
+        unset($this->isDirty, $this->yamlPreview, $this->appEvents);
+    }
+
+    public function removeCustomEvent(int $index): void
+    {
+        if (! isset($this->configData['custom_events'][$index])) {
+            return;
+        }
+
+        array_splice($this->configData['custom_events'], $index, 1);
+        $this->configData['custom_events'] = array_values($this->configData['custom_events']);
+        unset($this->isDirty, $this->yamlPreview, $this->appEvents);
+    }
+
     // --- Filter Management ---
 
     public function addFilter(int $ruleIndex): void
@@ -612,7 +667,7 @@ new #[Title('Config Editor')] class extends Component {
      */
     public function updatedConfigData(): void
     {
-        unset($this->isDirty, $this->yamlPreview, $this->dependencyWarnings);
+        unset($this->isDirty, $this->yamlPreview, $this->dependencyWarnings, $this->appEvents);
     }
 
     /**
@@ -621,6 +676,32 @@ new #[Title('Config Editor')] class extends Component {
      */
     private function prepareForSave(array $data): array
     {
+        // Clean up custom events
+        if (isset($data['custom_events'])) {
+            $data['custom_events'] = array_values(array_filter(
+                array_map(function (array $event) {
+                    if (empty($event['id'])) {
+                        return null;
+                    }
+
+                    $cleaned = ['id' => $event['id']];
+                    if (! empty($event['name'])) {
+                        $cleaned['name'] = $event['name'];
+                    }
+                    if (! empty($event['description'])) {
+                        $cleaned['description'] = $event['description'];
+                    }
+
+                    return $cleaned;
+                }, $data['custom_events']),
+                fn ($event) => $event !== null,
+            ));
+
+            if (empty($data['custom_events'])) {
+                unset($data['custom_events']);
+            }
+        }
+
         if (isset($data['rules'])) {
             $data['rules'] = array_map(function (array $rule) {
                 $cleaned = [
@@ -890,9 +971,18 @@ new #[Title('Config Editor')] class extends Component {
                                                 size="sm"
                                             >
                                                 <option value="">{{ __('Select event...') }}</option>
-                                                @foreach ($this->events as $eventKey => $eventData)
-                                                    <option value="{{ $eventKey }}">{{ $eventKey }} — {{ $eventData['label'] }}</option>
-                                                @endforeach
+                                                <optgroup label="{{ __('GitHub Events') }}">
+                                                    @foreach ($this->events as $eventKey => $eventData)
+                                                        <option value="{{ $eventKey }}">{{ $eventKey }} — {{ $eventData['label'] }}</option>
+                                                    @endforeach
+                                                </optgroup>
+                                                @if (! empty($this->appEvents))
+                                                    <optgroup label="{{ __('App Events') }}">
+                                                        @foreach ($this->appEvents as $eventKey => $eventData)
+                                                            <option value="{{ $eventKey }}">{{ $eventKey }} — {{ $eventData['label'] }}</option>
+                                                        @endforeach
+                                                    </optgroup>
+                                                @endif
                                             </flux:select>
 
                                             {{-- Filters --}}
@@ -1102,6 +1192,56 @@ new #[Title('Config Editor')] class extends Component {
                 </div>
                 <pre class="p-4 text-xs font-mono text-zinc-400 dark:text-zinc-500 overflow-auto max-h-[70vh] whitespace-pre leading-relaxed">{{ $this->yamlPreview }}</pre>
             </div>
+        </div>
+
+        {{-- Custom Events --}}
+        <div class="mt-4 rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden">
+            <details>
+                <summary class="px-4 py-3 cursor-pointer flex items-center justify-between hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
+                    <flux:text class="font-medium text-sm">{{ __('Custom Events') }} ({{ count($configData['custom_events'] ?? []) }})</flux:text>
+                </summary>
+                <div class="p-4 border-t border-zinc-200 dark:border-zinc-700">
+                    <flux:text variant="subtle" class="text-xs mb-3">
+                        {{ __('Define custom event types that agents can emit via the EmitCustomEvent tool. Events are prefixed with "app." automatically.') }}
+                    </flux:text>
+                    <div class="space-y-2">
+                        @foreach ($configData['custom_events'] ?? [] as $eventIndex => $customEvent)
+                            <div class="flex items-end gap-2" wire:key="custom-event-{{ $eventIndex }}">
+                                <div class="w-40 shrink-0">
+                                    <flux:input
+                                        label="{{ $eventIndex === 0 ? __('ID') : '' }}"
+                                        wire:model.live.debounce.300ms="configData.custom_events.{{ $eventIndex }}.id"
+                                        placeholder="deploy_ready"
+                                        size="sm"
+                                    />
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <flux:input
+                                        label="{{ $eventIndex === 0 ? __('Name') : '' }}"
+                                        wire:model.live.debounce.300ms="configData.custom_events.{{ $eventIndex }}.name"
+                                        placeholder="Deploy Ready"
+                                        size="sm"
+                                    />
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <flux:input
+                                        label="{{ $eventIndex === 0 ? __('Description') : '' }}"
+                                        wire:model.live.debounce.300ms="configData.custom_events.{{ $eventIndex }}.description"
+                                        placeholder="All checks passed"
+                                        size="sm"
+                                    />
+                                </div>
+                                <flux:button size="sm" variant="ghost" class="text-red-500 shrink-0" wire:click="removeCustomEvent({{ $eventIndex }})">
+                                    ✕
+                                </flux:button>
+                            </div>
+                        @endforeach
+                        <flux:button variant="ghost" class="border border-dashed border-zinc-300 dark:border-zinc-700 hover:border-indigo-500 w-full" wire:click="addCustomEvent">
+                            + {{ __('Add Custom Event') }}
+                        </flux:button>
+                    </div>
+                </div>
+            </details>
         </div>
 
         {{-- Status Bar --}}

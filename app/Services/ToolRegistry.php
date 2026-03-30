@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Ai\Contracts\ProjectAware;
 use App\Ai\Tools\BashTool;
 use App\Ai\Tools\EditTool;
+use App\Ai\Tools\EmitCustomEventTool;
 use App\Ai\Tools\GlobTool;
 use App\Ai\Tools\GrepTool;
 use App\Ai\Tools\ReadTool;
@@ -30,6 +31,7 @@ class ToolRegistry
         'Grep' => GrepTool::class,
         'StitchGenerate' => StitchGenerateTool::class,
         'StitchEdit' => StitchEditTool::class,
+        'EmitCustomEvent' => EmitCustomEventTool::class,
     ];
 
     /**
@@ -40,7 +42,7 @@ class ToolRegistry
      * @param  list<string>  $tools  Explicit list of tools to resolve (empty = all)
      * @return list<Tool>
      */
-    public function resolve(array $tools, string $workingDirectory, ?Project $project = null): array
+    public function resolve(array $tools, string $workingDirectory, ?Project $project = null, int $eventDepth = 0): array
     {
         $toolNames = ! empty($tools) ? $tools : array_keys(static::$tools);
 
@@ -51,6 +53,10 @@ class ToolRegistry
 
                 if ($project && $tool instanceof ProjectAware) {
                     $tool->setProject($project);
+                }
+
+                if ($tool instanceof EmitCustomEventTool) {
+                    $tool->setEventDepth($eventDepth);
                 }
 
                 $resolved[] = $tool;
